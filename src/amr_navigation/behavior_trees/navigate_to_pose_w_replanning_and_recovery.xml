@@ -1,0 +1,86 @@
+<!--
+  This is nav2_bt_navigator's own stock
+  navigate_to_pose_w_replanning_and_recovery.xml (unmodified structurally),
+  wrapped in one addition: a Timeout decorator around the entire
+  NavigateRecovery subtree.
+
+  Why: the stock tree's outer <RecoveryNode number_of_retries="6"> only
+  counts CONSECUTIVE failures of its first child (the replanning/following
+  PipelineSequence). Confirmed live in this project (2026-09-11): with a
+  goal that is unreachable but for which ComputePathToPose occasionally
+  returns a momentary, ultimately-useless path (its own inner
+  <RecoveryNode number_of_retries="1"> lets that happen after a costmap
+  clear), that transient success resets the outer counter before it ever
+  reaches 6 - the RoundRobin of ClearingActions/Spin/Wait/BackUp then keeps
+  cycling far longer than 6 clean retries would take (observed: 75+ seconds
+  of continuous Spin/BackUp, the robot physically wandering over a meter
+  from where the goal was requested). This is stock BT.CPP RecoveryNode
+  behavior, not a bug introduced by this project's own config, but it
+  leaves navigation attempts against an unreachable goal effectively
+  unbounded in wall-clock time - and BackUp is not obstacle-aware, so a
+  long enough unbounded recovery loop can drive the robot into a wall it
+  wasn't otherwise threatening to hit.
+
+  msec="60000": generous enough that it should never trigger during a
+  normal, healthy navigation attempt (even one hitting a couple of genuine
+  recovery cycles), but firing well before an unreachable-goal recovery
+  loop can wander the robot far enough to reach a wall. TimeoutNode is a
+  real BT.CPP core decorator (confirmed via `strings` on
+  libbehaviortree_cpp_v3.so - the XML tag is "Timeout", registered class
+  TimeoutNode, required parameter "msec"), not Nav2-specific and not
+  fabricated. On timeout it returns FAILURE, which bt_navigator reports
+  back to the NavigateToPose action's caller exactly as if the retry count
+  had been exhausted normally - twist_mux and whatever issued the original
+  goal see a clean failure, not a robot that silently keeps driving.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <Timeout msec="60000" name="NavigateTimeout">
+      <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+        <PipelineSequence name="NavigateWithReplanning">
+          <RateController hz="1.0">
+            <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+              <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </RecoveryNode>
+          </RateController>
+          <RecoveryNode number_of_retries="1" name="FollowPath">
+            <FollowPath path="{path}" controller_id="FollowPath"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </RecoveryNode>
+        </PipelineSequence>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <Spin spin_dist="1.57"/>
+            <Wait wait_duration="5"/>
+            <!-- backup_dist/backup_speed right-sized to nav2_bt_navigator's
+                 own stock defaults (0.15m / 0.025 m/s), down from this
+                 project's earlier 0.30m / 0.05m/s. Both BackUp and Spin are
+                 collision-checked live against the local costmap
+                 (confirmed via `strings` on libnav2_back_up_behavior.so -
+                 "Collision Ahead - Exiting DriveOnHeading" is a real,
+                 live-firing log line) and will refuse to complete a motion
+                 that would cross into the robot's own inscribed-radius
+                 safety disk. In this layout's tightest corridors there is
+                 often well under 0.30m of straight-line clearance behind
+                 the robot even when the recovery is otherwise legitimate,
+                 so the oversized distance was self-defeating: BackUp would
+                 immediately re-trigger its own collision check and exit
+                 with near-zero progress, leaving the RoundRobin cycling
+                 through ClearCostmap/Spin/Wait/BackUp without the robot
+                 ever actually moving - which reads externally as "recovery
+                 not coming back from it." 0.15m/0.025 is small enough to
+                 usually fit within a genuinely recoverable situation's real
+                 clearance instead of routinely exceeding it. -->
+            <BackUp backup_dist="0.15" backup_speed="0.025"/>
+          </RoundRobin>
+        </ReactiveFallback>
+      </RecoveryNode>
+    </Timeout>
+  </BehaviorTree>
+</root>

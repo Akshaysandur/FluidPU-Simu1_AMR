@@ -1,0 +1,22 @@
+fleet_manager:
+  ros__parameters:
+    use_sim_time: true
+    map_frame: map
+    base_frame: base_link
+    arrive_tolerance: 0.10
+    arrive_yaw_tolerance: 3.2   # heading is whatever the planner arrives with (use_final_approach_orientation), so not checked
+    max_retries: 5
+    # LIF -> map: outer walls of the LIF floor plan (x 0.0725..2.947, y 0.0505..2.44)
+    # onto the SLAM map's outer walls (x -0.19..2.76, y -1.16..1.19). No rotation.
+    # LIF -> map (== Webots world) is a 180 deg rotation about the floor centre (floor 3.0 x 2.5 m,
+    # centred at x=0.01): map = offset - lif. Verified: all 22 LIF nodes land in free space of the
+    # world with >=0.125 m wall clearance; V nodes match the station mouth/pillar geometry.
+    lif_scale_x: -1.0
+    lif_scale_y: -1.0
+    lif_offset_x: 1.51
+    lif_offset_y: 1.25
+    station_names: ["station_1"]
+    # Graph node ids in visit order: enter, inside, exit.
+    # Physical Webots 'Station 1' = LIF 'Station3'. 18 = "113_56", 10 = "141_29", 17 = "167_56" in the graph editor.
+    # Swap 18 <-> 17 if the station is entered from the other side.
+    station_1_nodes: [18, 10, 17]

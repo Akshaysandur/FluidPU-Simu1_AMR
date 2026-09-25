@@ -1,0 +1,33 @@
+# 2x nearest-neighbour upsample of room_map.pgm - same walls, same physical
+# size (3.100m x 2.550m), same origin, twice the grid fidelity.
+#
+# This exists because nav2_costmap_2d's StaticLayer forces the global costmap
+# to adopt the MAP's resolution ("StaticLayer: Resizing costmap to %d X %d at
+# %f m/pix", confirmed via `strings` on liblayers.so) - so setting
+# global_costmap.resolution in nav2_params.yaml has no effect while a static
+# map is loaded. The only way to give the global planner a finer grid is to
+# give it a finer map.
+#
+# Why it matters here: this layout's narrowest passages are 353mm (see
+# project_context, layout drawing). InflationLayer unconditionally stamps
+# every cell within the robot's INSCRIBED radius (0.1m, from robot_radius) as
+# INSCRIBED_INFLATED_OBSTACLE = 253, which SmacPlanner2D treats as
+# untraversable - and that band is NOT reducible via inflation_radius or
+# cost_scaling_factor. At 0.05 m/px a 353mm gap is 7.1 cells wide, minus 2
+# cells of inscribed band per side, leaving ~3 cells - and once the passage
+# straddles the grid unfavourably, 0. That is why the robot could not plan
+# through the thin passages no matter how far the inflation numbers were
+# lowered. At 0.025 m/px the same gap is 14.1 cells with ~6 free cells, which
+# the planner can actually route through.
+#
+# Generated with PIL Image.NEAREST (no interpolation - occupancy values are
+# preserved exactly; pixel-value histogram is exactly 4x the original's, with
+# identical physical extents). room_map.pgm/.yaml are left untouched, so
+# reverting is just pointing navigation.launch.py's 'map' argument back.
+image: room_map_hires.pgm
+mode: trinary
+resolution: 0.025
+origin: [-0.252, -1.27, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25

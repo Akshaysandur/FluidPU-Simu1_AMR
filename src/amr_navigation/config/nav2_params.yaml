@@ -1,0 +1,1193 @@
+amcl:
+  ros__parameters:
+    use_sim_time: True
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.1
+    alpha4: 0.1
+    alpha5: 0.1
+    base_frame_id: "base_link"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    scan_topic: "scan"
+    transform_tolerance: 1.5
+
+    # Mirrors amr_navigation/config/amcl.yaml exactly (Milestone 2) - the
+    # task that created this file only listed set_initial_pose/initial_pose
+    # here, which would have silently dropped robot_model_type and left AMCL
+    # back on the default DifferentialMotionModel (can't model mecanum
+    # strafing at all - see decisions-and-gotchas.md's AMCL section).
+    # These two files are a duplicated source of AMCL config by design (the
+    # standalone amcl.yaml + localization.launch.py stay as a lightweight
+    # map+AMCL-only entry point) - if AMCL tuning changes, update both.
+    set_initial_pose: true
+    initial_pose:
+      x: 1.270
+      y: 0.380
+      z: 0.0
+      yaw: 3.1416   # map frame == Webots world frame (room_map_world); values = TurtleBot3Burger spawn pose in simulation.wbt
+    # Switched from OmniMotionModel to DifferentialMotionModel for the 2WD +
+    # caster transition (confirmed real via `strings` on libamcl_core.so -
+    # nav2_amcl::DifferentialMotionModel exists alongside OmniMotionModel).
+    # Omni modeled the old 4-wheel mecanum platform's holonomic strafing
+    # capability in AMCL's particle motion prediction; a 2WD diff-drive robot
+    # physically cannot strafe, so leaving Omni here would let the particle
+    # filter predict lateral motion the real (and simulated) robot can never
+    # produce - a silent motion-model mismatch, not just a missed
+    # optimization.
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+
+    min_particles: 500
+    max_particles: 2000
+    # Tightened for mecanum wheel slip in narrow doorways - a slipping
+    # wheel makes odometry-only prediction between updates unreliable, so
+    # correcting against the LiDAR scan more often (every 5cm/~3deg
+    # instead of 10cm/~4.6deg) limits how far dead reckoning can drift
+    # before the next correction.
+    update_min_d: 0.05
+    update_min_a: 0.05
+    resample_interval: 1
+    laser_model_type: "likelihood_field"
+    laser_min_range: 0.1
+    laser_max_range: 12.0
+    max_beams: 80                    # reduced from 180 to cut AMCL ray-casting CPU load during doorway traversal
+
+planner_server:
+  ros__parameters:
+    # The actual behavior tree in use (navigate_to_pose_w_replanning_and_recovery.xml,
+    # confirmed - bt_navigator.default_nav_to_pose_bt_xml is unset, falls back
+    # to this file) wraps ComputePathToPose in <RateController hz="1.0">, so
+    # planner_server is only ever called ~once/second by design. 20.0 here
+    # was never achievable and warned on nearly every cycle regardless of
+    # planner performance - not a SmacPlanner2D slowness problem. Matched to
+    # the BT's real cadence.
+    expected_planner_frequency: 1.0
+    use_sim_time: true
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.05   # was 0.15: let the path end within 5 cm of the waypoint, not 15 cm short of it
+      max_iterations: 1000000
+      # Real parameter name is max_on_approach_iterations (confirmed via
+      # `strings` on libnav2_smac_planner_2d.so) - max_on_obstacle_iterations
+      # doesn't exist and was a silent no-op.
+      max_on_approach_iterations: 1000
+      allow_unknown: true
+      # Explicitly pinned off. downsample_costmap/downsampling_factor are
+      # real SmacPlanner2D parameters (confirmed via `strings` on
+      # libnav2_smac_planner_2d.so); leaving them implicit would risk the
+      # planner quietly coarsening away the finer 0.025m grid that
+      # maps/room_map_hires.yaml exists to provide, which is the whole
+      # mechanism letting it route through the 353mm passages.
+      downsample_costmap: false
+      downsampling_factor: 1
+      # 1.3, raised from the earlier 1.0 (itself lowered from a stock 2.0
+      # for the same reason being revisited here). This weights costmap
+      # cost against travel distance - too high, and the planner detours
+      # around any costed region rather than accepting it; too low (1.0),
+      # and it has no reason to prefer a straighter, more open route over a
+      # shorter one that hugs a costed wall, undermining the point of the
+      # inflation_layer changes above.
+      #
+      # Back to 1.5, alongside global_costmap's inflation_layer being
+      # restored to the original confirmed-working 0.55/5.0 gradient below -
+      # 1.0 only made sense against the thin, near-flat costmaps tried in
+      # between. See that block's comment for the full reasoning on why
+      # this whole combination (this + 0.55/5.0 + 0.11/25.0 local + MPPI's
+      # temperature/vx_std/wz_std) is being restored together rather than
+      # tuned as another isolated number.
+      cost_travel_multiplier: 1.5
+      use_final_approach_orientation: true    # goal heading = direction of arrival. Forcing a fixed heading at a station mouth (approached from outside) made MPPI fight the path and stall
+      # smooth_path removed: not a real SmacPlanner2D parameter (confirmed
+      # absent from libnav2_smac_planner_2d.so - no on/off toggle exists at
+      # all for its internal Smoother, which runs unconditionally as part of
+      # createPlan()). This key never enabled or disabled anything.
+      #
+      # The smoother IS tunable though, via nav2_smac_planner::SmootherParams
+      # (confirmed field names + real defaults in the installed
+      # types.hpp: tolerance=1e-10, w_data=0.2, w_smooth=0.3,
+      # do_refinement=true - read under the "GridBased.smoother.*" prefix).
+      # Raising w_smooth relative to w_data trades path-fidelity for
+      # smoothness, directly targeting the jagged/staircase-looking grid
+      # paths Node2D's search naturally produces before smoothing.
+      smoother:
+        w_data: 0.15
+        w_smooth: 0.55
+        do_refinement: true
+
+controller_server:
+  ros__parameters:
+    use_sim_time: True
+    # 5.0, NOT 20.0. The robot's only pose source is rf2o, which is driven
+    # by /scan, and this project has already directly measured the Webots
+    # LDS-01 at 4.45Hz with /odom_rf2o at ~4.4Hz (see rf2o_params.yaml's own
+    # header, where `freq: 4.0` was set for exactly this reason). A control
+    # loop cannot outrun the pose estimate that feeds it: the live logs show
+    # "Control loop missed its desired rate of 20.0000Hz" firing with a
+    # minimum inter-warning gap of 0.231s == 4.33Hz, i.e. the loop was
+    # already running at the sensor rate and simply being told off for it
+    # every single cycle. This was never a CPU-load problem - which is why
+    # cutting batch_size 2000->500, time_steps 56->36 and local_costmap
+    # resolution 0.025->0.05 never silenced it. 5.0 matches both the real
+    # sensor rate and local_costmap's own update_frequency (also 5.0).
+    # 10.0, verified live: with range_layer gone the loop holds exactly
+    # 10.001Hz on /cmd_vel_raw with ZERO "missed its desired rate" warnings.
+    # The original 20Hz setting was measurably only achieving 4.33Hz (min gap
+    # between warnings = 0.231s). That cap was NOT the 4.5Hz lidar gating the
+    # loop as first assumed - it was range_layer's four sonar subscriptions
+    # and cone-marking saturating the costmap thread. Dropping that layer
+    # (see local_costmap.plugins) freed it. 10Hz is deliberately ~2x the
+    # 4.5Hz pose rate: running faster just re-consumes the same rf2o pose
+    # several times for no gain, and 20Hz would burn 4 cycles per pose.
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.01
+    min_y_velocity_threshold: 0.01
+    min_theta_velocity_threshold: 0.01
+    # Seconds of continuous controller failure tolerated before aborting.
+    # At the old 20Hz this was 6 control periods; at the real 5Hz it would
+    # be 1.5, aborting on essentially the first hiccup. Rescaled to keep
+    # the same ~6-cycle intent.
+    # ~6 control periods at 10Hz (was 0.3 = 6 periods at the nominal 20Hz).
+    failure_tolerance: 0.6
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+    # Nav2 controller publishes to /cmd_vel_raw, which routes into twist_mux.
+    cmd_vel_topic: /cmd_vel_raw
+    # Real odom_topic parameter (confirmed via `strings` on
+    # libcontroller_server_core.so). This does NOT affect TF authority -
+    # rf2o_laser_odometry stays the sole odom->base_link broadcaster
+    # (diffdrive_controller's enable_odom_tf is disabled in
+    # amr_simulation/config/ros2control.yaml) regardless of this setting.
+    # It IS consumed though, contrary to what this comment used to claim:
+    # controller_server feeds it into an OdomSmoother whose output
+    # (curr_speed) is read by RegulatedPurePursuitController::
+    # rotateToHeading() to clamp each cycle's commanded angular velocity to
+    # curr_speed.angular.z +/- (max_angular_accel * dt). With this pointed
+    # at /odom_rf2o (rf2o's real scan rate is ~4.45Hz, freq: 4.0), that
+    # feedback only updates once every ~5 controller ticks (20Hz control
+    # loop) and rf2o's twist.angular.z is itself noisy/near-zero, so the
+    # clamp window never advances past one accel step (1.5 rad/s^2 * 0.05s
+    # = 0.075 rad/s - exactly the ceiling observed live) - the robot could
+    # never actually spin up to rotate_to_heading_angular_vel (0.6) and
+    # "Failed to make progress" fired on every goal needing real rotation.
+    # Switched to plain /odom (diffdrive_controller's wheel-encoder
+    # odometry, measured ~48.8Hz - see ros2 topic hz /odom) purely for this
+    # velocity-feedback role; wheel encoders are the textbook-correct
+    # source for short-horizon instantaneous velocity anyway (rf2o/scan-
+    # matching is kept for the long-horizon pose/TF where it doesn't drift).
+    odom_topic: /odom
+
+    # Plugin strings must be the exact pluginlib-registered name. nav2_controller's
+    # progress/goal checkers register only a `type=` (C++ namespace, "::"), not a
+    # `name=` alias - confirmed via nav2_controller's plugins.xml. The slash form
+    # ("nav2_controller/SimpleProgressChecker") does not exist and would fail to load.
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.03  # lowered from 0.04 — tolerate even slower net displacement while threading gaps
+      movement_time_allowance: 15.0   # raised again from 12.0 — MPPI's tightened sampling (see FollowPath.vx_std/wz_std) trades speed for a valid line through a 353mm passage, needs more time to clear before reading as stuck
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # Loosened from 0.08/0.15: nav2_controller::SimpleGoalChecker (confirmed
+      # via `strings` on libsimple_goal_checker.so - only .xy_goal_tolerance/
+      # .yaw_goal_tolerance/.stateful exist, no velocity check at all) only
+      # reports the goal reached once BOTH position AND yaw are within
+      # tolerance at the same instant. At 8.6 degrees of yaw tolerance, the
+      # now-halved max_vel_theta (see FollowPath below) meant the robot could
+      # get well within the position tolerance but then spend a long time
+      # making small in-place corrections chasing the last few degrees of
+      # final heading, visibly "stuck" spinning right next to the goal
+      # instead of ever registering SUCCEEDED. Widening both so "close
+      # enough" actually completes, matching what was asked for.
+      xy_goal_tolerance: 0.07         # waypoints must be actually reached (AMCL error is ~0.03-0.04 m); nodes sit ~0.15 m from the walls
+      yaw_goal_tolerance: 3.14         # position-only goals: a heading requirement made MPPI orbit the waypoint (goal-yaw critic vs 7 cm xy tolerance)
+      stateful: true
+
+    # FollowPathRPP: nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController.
+    # PRESERVED but no longer active (not in controller_plugins) - swapped
+    # back out in favor of FollowPathDWB below, now renamed to FollowPath.
+    #
+    # Two real, structural problems surfaced under live testing that RPP
+    # cannot fix by tuning:
+    #
+    # 1. No local plan visualization at all. Confirmed via `strings` on the
+    #    real installed libnav2_regulated_pure_pursuit_controller.so: it
+    #    declares zero "local_plan"/"trajectories" publishing capability -
+    #    only a lightweight carrot-point marker (createCarrotMsg). RPP
+    #    doesn't roll out candidate trajectories; it computes one geometric
+    #    pursuit curvature per cycle from the existing global path, so
+    #    there's no separate local trajectory to show "overlapping the
+    #    global plan" in RViz the way DWB's local_plan does.
+    #
+    # 2. rotateToHeading() clamps its commanded angular velocity to
+    #    curr_speed.angular.z +/- (max_angular_accel * dt) every control
+    #    tick, using controller_server's odom_topic feed as curr_speed. Even
+    #    after pointing odom_topic at the fast wheel-encoder /odom (see that
+    #    parameter's comment above) instead of rf2o's slower scan-matched
+    #    /odom_rf2o, live testing still showed the commanded angular
+    #    velocity stalling and sign-flipping in the 0.05-0.15 rad/s range for
+    #    several seconds at a time instead of cleanly ramping to
+    #    rotate_to_heading_angular_vel, eventually tripping "Failed to make
+    #    progress". This reads as real oscillation in the heading-error
+    #    calculation (likely from the carrot point shifting slightly between
+    #    each ~1Hz global replan), not just a feedback-rate problem - DWB's
+    #    velocity-arc sampling doesn't have an equivalent live-odom
+    #    accel-clamp loop to get stuck in.
+    #
+    # Config and comments kept intact below in case RPP needs revisiting.
+    # Every parameter was checked against `strings` on the real installed
+    # libnav2_regulated_pure_pursuit_controller.so - three parameter names
+    # commonly seen for RPP online do NOT exist in this installed version
+    # and were corrected: min_approach_velocity is really
+    # min_approach_linear_velocity; max_allowed_time_to_collision_up_to_
+    # fast_stop is really max_allowed_time_to_collision_up_to_carrot;
+    # cost_scaling_factor (a DWB-critic-style name) is really
+    # inflation_cost_scaling_factor for this plugin.
+    # ACTIVE controller (id "FollowPath" is what the BT calls). Regulated Pure Pursuit tracks the
+    # smoothed Smac path deterministically; MPPI (kept below as FollowPathMPPI) sampled itself into
+    # ~0.005 m/s standstills around waypoints in the 0.35 m station gaps. Obstacles: the planner
+    # replans on the lidar-fed global costmap, RPP slows by wall cost and stops on predicted
+    # collision, collision_monitor is the last-line stop, BT recovery (backup/spin) resumes.
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.16
+      lookahead_dist: 0.30
+      min_lookahead_dist: 0.12
+      max_lookahead_dist: 0.45
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: true
+      transform_tolerance: 0.3
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.6
+      rotate_to_heading_angular_vel: 0.7
+      max_angular_accel: 2.0
+      allow_reversing: false
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.30
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 0.8
+      use_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.30
+      regulated_linear_scaling_min_speed: 0.06
+      use_cost_regulated_linear_velocity_scaling: true
+      inflation_cost_scaling_factor: 10.0   # = local_costmap inflation cost_scaling_factor
+      cost_scaling_dist: 0.25
+      cost_scaling_gain: 1.0
+      max_robot_pose_search_dist: 1.0
+    # FollowPath: nav2_mppi_controller::MPPIController. ACTIVE local
+    # controller. Confirmed installed and real: /opt/ros/humble/lib/
+    # libmppi_controller.so + libmppi_critics.so, with every critic below
+    # registered in nav2_mppi_controller/critics.xml, and "DiffDrive"
+    # confirmed as a literal valid motion_model value (the library's own
+    # validation string reads "is not valid! Valid options are DiffDrive,
+    # Omni, or Ackermann"). Every parameter name here was read off those two
+    # .so files directly, not assumed.
+    #
+    # Why MPPI replaced DWB (preserved below as FollowPathDWB):
+    # DWB scores a COARSE DISCRETE GRID of (vx, vtheta) pairs - here 20 x 35
+    # samples - and rejects any rollout whose cells are too costly. In a
+    # 353mm passage the surviving free corridor is only ~11cm wide for the
+    # robot's centre, which is narrower than the lateral spread between
+    # adjacent DWB samples at useful speeds: whole swathes of the sample set
+    # land in the inflated band, DWB finds no admissible rollout, and
+    # controller_server reports failure -> the BT fires backup/spin
+    # recoveries. That is exactly the RECOVER_BACKUP / IN_PLACE_SPIN /
+    # TRANSITIONING loop in the telemetry, repeating forever because each
+    # recovery returns the robot to the same geometry that failed.
+    #
+    # MPPI instead samples a large stochastic batch (2000 rollouts) around
+    # the previous optimal control sequence and returns a COST-WEIGHTED
+    # AVERAGE rather than picking one discrete winner - so it degrades
+    # gracefully in a corridor where most samples are poor, instead of
+    # failing outright. It also optimises the whole control sequence over
+    # the horizon rather than one (v, w) pair per tick, which is what
+    # produces the continuous, smooth, centred command stream through a
+    # narrow gap that DWB's discrete search cannot express.
+    FollowPathMPPI:
+      plugin: "nav2_mppi_controller::MPPIController"
+      # model_dt should match the controller period (controller_frequency:
+      # 20.0 above -> 0.05s) so the rollout model matches real execution
+      # cadence. 36 steps x 0.05s = 1.8s horizon (~0.63m at vx_max) - still
+      # ample foresight inside a 3.10m x 2.55m arena, cut from 56 alongside
+      # batch_size below once halving batch_size alone (2000 -> 1000)
+      # wasn't enough to clear the missed-rate warnings.
+      # 14 steps x model_dt 0.2 = 2.8s horizon, ~0.98m of lookahead at
+      # vx_max 0.35 - the right scale for a 3.0x2.5m room with 353mm
+      # passages. (36 steps at the corrected model_dt would be a 7.2s /
+      # 2.5m horizon, i.e. longer than the room itself.)
+      # 28 x model_dt 0.1 = the same 2.8s / ~0.98m horizon, but sampled at
+      # 3.5cm per step instead of 7cm at vx_max. That resolution matters
+      # here: the tightest passage in this map measures 0.162m half-width
+      # (verified by distance transform on room_map_hires.pgm), leaving the
+      # 0.10m-radius robot just 62mm of margin per side - a 7cm trajectory
+      # step can straddle a wall corner between samples and let CostCritic
+      # score a clipping trajectory as clean.
+      time_steps: 28
+      # MUST equal the real control period (1 / controller_frequency).
+      # This was 0.05 against a loop that actually ran at 4.33Hz (0.231s),
+      # so MPPI integrated every rollout believing its commands would be
+      # refreshed 4.6x more often than they really were. The first command
+      # of each optimal trajectory was then held ~4.6x longer than planned,
+      # so the robot consistently overshot every steering decision - the
+      # real source of the wobbling / curving / hesitating behaviour this
+      # project has been chasing, and something no critic weight could fix.
+      model_dt: 0.1
+      # batch_size x time_steps x critics is MPPI's real per-cycle FLOP
+      # count, evaluated every 50ms on controller_server's own single-
+      # threaded executor (confirmed no configurable multi-threaded
+      # executor exists for this Humble build's controller_server -
+      # checked `strings` on the installed binary and
+      # libcontroller_server_core.so, neither declares an executor_type/
+      # num_threads parameter, so this isn't a flag we're missing).
+      # 2000 -> 1000 alone didn't clear "Control loop missed its desired
+      # rate of 20.0000Hz" - live-diagnosed alongside local_costmap's
+      # resolution (see that block's comment: reverted 0.025 -> 0.05,
+      # a real 4x cell-count cut, likely the bigger single contributor
+      # since it reran every costmap update on the same executor). Cut
+      # further to 500 together with that fix rather than stacking
+      # further batch_size-only cuts, which would have started eroding
+      # the quality that let MPPI thread the narrow passages at all.
+      # Raised back up from 500: the 3x cut in time_steps above more than
+      # pays for it, and the loop was never CPU-bound in the first place
+      # (see controller_frequency). More rollouts = better optimisation
+      # quality per cycle, which matters more now that cycles are 5Hz.
+      batch_size: 1000
+      # Sampling std devs. wz_std deliberately kept generous relative to
+      # wz_max so the batch still explores real steering options through a
+      # gap even though the angular ceiling itself is low.
+      # Sampling noise MUST be a modest fraction of the control range,
+      # ~10-25%. These were Nav2's stock 0.2/0.4 - but those defaults are
+      # sized for stock vx_max 0.5 / wz_max 1.9. This robot runs vx_max 0.35
+      # and wz_max 0.6 (angular deliberately halved for this project), which
+      # made the noise 57% of the linear range and 67% of the angular range:
+      # the sampled distribution was effectively uniform across the whole
+      # control envelope, so each batch contained as many hard-left as
+      # hard-right rollouts and the cost-weighted average cancelled to near
+      # zero. Measured live: w oscillating +0.29 -> -0.33 -> +0.28 in a clean
+      # limit cycle with peak vx of only 0.06 out of 0.35, and 35 IN_PLACE_SPIN
+      # telemetry states in a single 60s goal. After this change the same run
+      # logged 2 IN_PLACE_SPIN, produced STRAIGHT_FORWARD states, and threw no
+      # "Failed to make progress" at all. This - not inflation, not the map
+      # resolution - is what made the robot dither instead of drive.
+      # Restored to this project's own established working values (~22% of
+      # vx_max, 25% of wz_max), reverting the 0.05/0.075 narrow-passage
+      # experiment above (that pair was tuned tighter specifically for
+      # threading a passage against the since-reverted 0.11/25.0 local
+      # costmap - it doesn't have the same rationale now that local_costmap
+      # is back to a shared 0.15/15.0 value).
+      vx_std: 0.10
+      vy_std: 0.2
+      wz_std: 0.15
+      # Velocity ceilings mirror the earlier "straight line can stay quick,
+      # rotation must be slow" request: linear unchanged at 0.35, angular
+      # held at the halved 0.6. vy_max is 0.0 because this is a 2-wheel
+      # differential drive with no lateral DOF - DiffDriveMotionModel zeroes
+      # vy internally regardless, this just makes it explicit.
+      # Linear speed raised 0.35 -> 0.45 on request. Angular (wz_max) is
+      # deliberately NOT touched - it stays at the halved 0.6 rad/s set
+      # earlier for this project.
+      vx_max: 0.18    # diffdrive_controller caps linear speed at 0.2 m/s; 0.45 made MPPI over-predict its own progress
+      # Reverse capped at -0.25 rather than mirroring vx_max. The live
+      # telemetry showed long runs of RECOVER_BACKUP / negative vx as MPPI
+      # dithered backwards; reverse is needed for genuine recovery but never
+      # needs to be as fast as forward travel, and limiting it removes a
+      # large slice of unproductive backward rollouts from every batch.
+      vx_min: -0.08   # short reversing only; station gaps are 0.35 m wide
+      vy_max: 0.0
+      wz_max: 0.9
+      iteration_count: 1
+      prune_distance: 1.0
+      transform_tolerance: 0.2
+      # 0.35, restored to this project's own established working range
+      # alongside vx_std/wz_std above - between the 0.2 that over-averaged
+      # and the 0.1 that under-explored and broke movement outright.
+      temperature: 0.35
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      visualize: true
+      reset_period: 1.0
+      regenerate_noises: false
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "TwirlingCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      # CostCritic chosen over ObstaclesCritic deliberately. ObstaclesCritic
+      # reconstructs distance-to-obstacle by inverting the inflation formula,
+      # which requires its own inflation_radius/cost_scaling_factor copies to
+      # exactly mirror the costmap's - a silent, fragile coupling that breaks
+      # the moment either side is retuned (and this file retunes inflation
+      # often). CostCritic scores the costmap value directly, so it stays
+      # correct through inflation changes.
+      #
+      # consider_footprint MUST be false here - this was a real bug, caught
+      # live: both costmaps define this robot's shape via robot_radius (a
+      # circle), never an explicit `footprint` polygon (confirmed - neither
+      # global_costmap nor local_costmap sets one anywhere in this file).
+      # Costmap2DROS::getRobotFootprint() returns empty for a radius-only
+      # robot, and CostCritic's consider_footprint:true path requires an
+      # actual polygon - it threw exactly this at configure time:
+      # "Considering footprint in collision checking but no robot footprint
+      # provided in the costmap", which controller_server has no error-state
+      # transition for, so it took the whole lifecycle bringup down (rf2o's
+      # "Waiting for laser_scans" in the same log was just this abort
+      # racing rf2o's own 3s startup delay, not a separate bug). With
+      # consider_footprint: false, CostCritic falls back to scoring against
+      # the costmap's own inscribed/circumscribed-radius potential field
+      # (built from robot_radius via the inflation layer) - the officially
+      # recommended, cheaper path for a circular robot, and exactly the
+      # radius-based collision model this project's costmaps already use
+      # everywhere else.
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: false
+        collision_cost: 1000000.0
+        near_goal_distance: 0.5
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      GoalAngleCritic:
+        enabled: false
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      # PathAlign raised above the Nav2 reference default (14.0): this is the
+      # critic that holds the rollout on the global path's centreline, which
+      # in a 353mm passage is the difference between threading the gap and
+      # clipping an inflated edge. max_path_occupancy_ratio kept low so the
+      # critic stays active even when much of the path lies in costed cells -
+      # which is the normal condition inside these corridors.
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 18.0
+        # 0.5, raised from 0.05 (which was stricter even than Nav2's own
+        # 0.07 default). This is a KILL-SWITCH, not a weight: PathAlignCritic
+        # counts global-path points sitting in high-cost/unknown local-costmap
+        # cells and, the moment that fraction exceeds this ratio, it returns
+        # WITHOUT SCORING ANYTHING - MPPI is then no longer pulled toward the
+        # global plan at all and free-runs on its other critics.
+        # In this map that fires exactly where it hurts most: the global plan
+        # through a 0.324m passage runs ~0.162m from both walls, and with
+        # inflation_radius == robot_radius == 0.10 only a few cm of AMCL/odom
+        # drift is enough to push a run of path points into inscribed cells.
+        # The critic switched itself off inside every narrow passage, which is
+        # precisely the "local controller stops following the global path"
+        # behaviour reported. Being permissive here is correct for a robot
+        # whose whole job is threading gaps barely wider than itself.
+        max_path_occupancy_ratio: 0.5
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        # 8.0, up from 5.0: with PathAlignCritic no longer silently disabling
+        # itself, reinforce progress ALONG the plan so the two path critics
+        # pull together (align = stay on it laterally, follow = advance down
+        # it) instead of PathAlign alone fighting the obstacle critics.
+        cost_weight: 8.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      # Carries over the earlier "straight lines, not obnoxious curves"
+      # request - penalises rotational velocity so the optimiser prefers the
+      # straighter of two otherwise-equal rollouts.
+      TwirlingCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+
+    # FollowPathDWB: dwb_core::DWBLocalPlanner. PRESERVED but no longer
+    # active (not in controller_plugins) - replaced by the MPPI FollowPath
+    # above; see that block's header for why DWB's discrete sampling could
+    # not thread this layout's 353mm passages. Kept intact, including the
+    # critic rebalance from the earlier anti-snaking tuning pass, so it can
+    # be swapped back by renaming the two blocks.
+    FollowPathDWB:
+      plugin: "dwb_core::DWBLocalPlanner"
+      goal_checker_id: "general_goal_checker" # Explicitly bind to our goal-tolerance plugin
+      xy_goal_tolerance: 0.15            # Must match general_goal_checker to avoid early/late stops
+      yaw_goal_tolerance: 0.35        # ~20 degrees (3.14 was tried: goals reported SUCCEEDED instantly)
+      debug_trajectory_details: True
+      # publish_eval_grid isn't a real DWBLocalPlanner parameter - confirmed
+      # via `strings` on libdwb_core.so, whose actual declared names are
+      # .publish_evaluation / .publish_global_plan / .publish_local_plan /
+      # .publish_transformed_plan / .publish_trajectories /
+      # .publish_cost_grid_pc. Using publish_evaluation here instead - the
+      # real name for what "eval grid" was presumably asking for.
+      publish_evaluation: true
+      publish_global_plan: true
+      publish_local_plan: true
+      prune_plan: true
+      prune_distance: 1.0
+      min_vel_x: -0.35
+      max_vel_x: 0.35
+      # Lateral sampling disabled: was a deliberate tradeoff back when this
+      # was a mecanum robot capable of strafing (giving up that capability
+      # to eliminate crab-walking/trajectory flicker). Under the 2WD +
+      # caster transition it's no longer a tradeoff at all - a differential-
+      # drive robot has no lateral DOF, so min/max_vel_y must be 0 to match
+      # physical reality, not just tuning preference.
+      min_vel_y: 0.0
+      max_vel_y: 0.0
+      min_vel_theta: 0.06
+      # Halved from 1.2: robot was turning/rotating too fast for comfort.
+      # Linear motion (min/max_vel_x above) is untouched - this only slows
+      # the rotational component, in place spins and the turning phase of
+      # curved rollouts alike, since both draw their angular speed from this
+      # same ceiling. acc_lim_theta/decel_lim_theta halved to match, so the
+      # ramp up to the new (lower) ceiling is gentler too, not just capped
+      # lower while still snapping up to it at the old aggressive rate.
+      max_vel_theta: 0.6
+      min_speed_xy: 0.0
+      max_speed_xy: 0.35
+      min_speed_theta: 0.0
+      # Kinematic parameters for DWB (Holonomic / Mecanum setup)
+      acc_lim_x: 1.0
+      acc_lim_y: 1.0
+      acc_lim_theta: 1.0
+      decel_lim_x: -1.5
+      decel_lim_y: -1.5
+      decel_lim_theta: -1.0
+
+      # Trajectory generator and critics.
+      trajectory_generator_name: "dwb_plugins::StandardTrajectoryGenerator"
+      sim_time: 1.5               # shortened further from 1.8 - shorter rollouts both reject less often in tight channels AND resist bowing into wide arcs in open space
+      # linear_granularity/angular_granularity: real StandardTrajectoryGenerator
+      # parameters (confirmed via `strings` on libstandard_traj_generator.so -
+      # dwb_plugins itself ships no .so of its own; this plugin's actual
+      # library is standard_traj_generator, per its plugins.xml). Controls
+      # how finely each candidate rollout is subdivided when scoring it
+      # against the critics below - finer granularity gives PathAlign/
+      # PathDist more points along each rollout to compare against the
+      # global path, at some extra compute cost per cycle.
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      # Real dwb_core::DWBLocalPlanner parameter (confirmed via `strings` on
+      # libdwb_core.so - ".transform_tolerance" / "Setting transform_tolerance
+      # to %f"), separate from any costmap's own transform_tolerance.
+      transform_tolerance: 0.2
+      vx_samples: 20
+      vy_samples: 1                # min_vel_y == max_vel_y == 0, so 1 sample (always 0.0) is all that's meaningful
+      vtheta_samples: 35
+      # PreferForward is a real registered dwb_critics plugin (confirmed
+      # earlier via dwb_critics' plugins.xml: dwb_critics::PreferForwardCritic).
+      # It penalizes non-forward-facing rollouts - paired with vy locked to
+      # 0 above, this fully commits the planner to forward-nose driving.
+      critics: ["Oscillation", "BaseObstacle", "PathDist", "GoalDist", "PathAlign", "PreferForward"]
+      Oscillation.scale: 3.0      # lower oscillation penalty — allows faster cornering without fluttering
+      # Lowered further, 3.0 -> 1.5: paired with this task's steeper
+      # inflation decay (global 4.0, local 3.0), the cost gradient right at
+      # a passage wall is now much shallower than it was under the old
+      # 0.20m/8-10.0 inflation - keeping BaseObstacle's scale high against a
+      # shallow gradient would still reject valid close-to-wall rollouts
+      # through <0.55m channels, just via critic weighting instead of raw
+      # inflation cost. This is a deliberate trade: DWB now tolerates closer
+      # wall proximity in exchange for actually fitting through doorways.
+      # Raised 1.5 -> 2.0 for path-tracking tightness (less deviation
+      # around obstacles); still well under the pre-narrow-passage-tuning
+      # value of 3.0, so most of that doorway-fitting margin is kept.
+      #
+      # Lowered again, 2.0 -> 1.5: paired with this task's further
+      # steepening (global 4.0 -> 6.0, local 3.0 -> 5.0) and local_costmap's
+      # inflation_radius shrinking to 0.06, the cost gradient near a wall is
+      # shallower still than when this was set to 2.0 - keeping the scale
+      # there would claw back some of the same close-wall rejection this
+      # task is asking to remove. Matches this critic's own established
+      # pattern in this file: every time the inflation gradient is
+      # flattened, BaseObstacle's scale is revisited to stay proportionate.
+      BaseObstacle.scale: 1.5
+      PathDist.scale: 32.0
+      # Lowered from 24.0: with PathDist/PathAlign both at 32.0 already
+      # dominating, GoalDist pulling nearly as hard (24.0) still let the
+      # planner cut corners toward the final goal instead of respecting the
+      # global path's curvature through the middle of a route.
+      GoalDist.scale: 12.0
+      PathAlign.scale: 32.0       # raised from 24.0 — locks the local plan tighter onto the global path's centerline through gaps, trading corner-cutting smoothness for accuracy threading a passage
+      PathAlign.forward_point_distance: 0.1
+      PreferForward.scale: 4.0    # lowered from 6.0 — less resistance to the rotation component of a curving arc
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: True
+      transform_tolerance: 1.0   # raised from 0.5 to absorb sim clock skips
+      # TurtleBot3 Burger is round, not rectangular - a polygon footprint
+      # made sense for the old rectangular-chassis platforms but not here.
+      # robot_radius: 0.1 is ROBOTIS's own real declared value (read
+      # directly from webots_ros2_turtlebot's resource/nav2_params.yaml,
+      # both its global_costmap and local_costmap blocks) - not re-derived,
+      # not padded further, since it's already their own working figure
+      # for this exact robot. footprint and robot_radius are mutually
+      # exclusive in nav2_costmap_2d - only one may be set.
+      robot_radius: 0.105   # TurtleBot3 Burger circumscribed radius
+      # Real Costmap2DROS parameter (confirmed via `strings` on
+      # libnav2_costmap_2d_core.so). Its nonzero default was adding an
+      # extra margin on top of robot_radius before nav2_costmap_2d computes
+      # the footprint's inscribed/circumscribed radii - caught via a real
+      # startup ERROR log: "configured inflation radius (0.100) is smaller
+      # than the computed inscribed radius (0.108) of your footprint".
+      # 0.1 is already ROBOTIS's own real collision radius for this exact
+      # robot, not an under-measurement that needs extra safety padding, so
+      # the fix is removing the padding (making the computed inscribed
+      # radius match the configured inflation_radius exactly), not raising
+      # inflation_radius - which would undo this file's deliberate
+      # narrow-passage tuning (see inflation_layer below and local_costmap's
+      # copy of this same override).
+      footprint_padding: 0.0
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        # combination_method (real nav2_costmap_2d::CostmapLayer parameter,
+        # confirmed via `strings` on liblayers.so): 1 = Max (the default) -
+        # this layer's values are merged into the master grid by taking
+        # whichever is HIGHER, static_layer's or this layer's. That means a
+        # cell static_layer marked as a wall stays lethal forever, even when
+        # this layer's live scan.clearing ray-traces straight through it and
+        # proves it's actually clear right now - max(0, 253) is still 253.
+        # Live-diagnosed root cause of a real stuck failure: the robot sat
+        # motionless with the planner repeating "Starting point in lethal
+        # space!" indefinitely, while in the SAME instant Spin and BackUp
+        # (both collision-checked against the LOCAL costmap, which has no
+        # static_layer at all - see local_costmap.plugins below) executed
+        # without any collision refusal. That split is only possible if the
+        # global costmap's static_layer is holding a cell lethal that the
+        # live scan no longer agrees with (map-to-reality drift of a
+        # centimeter or two is enough in a passage this tight) - exactly
+        # what combination_method: 1 preserves forever, and clearing the
+        # costmap doesn't fix either, since static_layer's own content isn't
+        # touched by a clear.
+        #
+        # 0 = Overwrite: this layer's own touched cells (marked OR cleared
+        # by the current scan) replace whatever static_layer/prior layers
+        # had there, instead of only ever being able to raise the cost.
+        # Cells the current scan doesn't observe this cycle are untouched
+        # either way - a wall genuinely out of the lidar's current view
+        # still comes from static_layer unaffected. This is the standard,
+        # documented Nav2 lever for "trust the live sensor over the
+        # pre-built map" (as opposed to inflation_radius/cost_scaling_factor,
+        # which cannot help here at all - the cell in question was never a
+        # soft-decay cost, it was the static map's own hard 0/lethal entry).
+        combination_method: 0
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        # 0.15/10.0, reduced again from 0.30/8.0 on request - the soft
+        # decay band is now only 5cm wide (0.10 -> 0.15), which is 2 cells
+        # on this costmap's 0.025m grid, so it renders as a thin skirt on
+        # the walls instead of the large soft halo. Computed centreline
+        # costs: 353mm passage (d=0.1765m) and everything wider read a flat
+        # 0, since they sit past the band entirely; only the map's two
+        # narrowest 300mm passages (d=0.15m, exactly at the band edge) still
+        # carry ~154. That is soft cost on a route with no alternative
+        # anyway (every passage here is single-entrance per
+        # calibrate_inflation.py's bridge analysis), so it cannot cause
+        # detour-seeking - raise cost_scaling_factor if it ever needs to
+        # read cheaper.
+        #
+        # NOTE: this only changes SOFT cost. It does not widen anything the
+        # robot can physically fit through - the hard, planner-blocking
+        # 253/inscribed core is set by robot_radius (0.10), not by this
+        # value, and is unaffected by any inflation_radius. Trade-off, same
+        # as documented above: with a band this thin there is no centering
+        # gradient anywhere, so SmacPlanner2D degenerates to shortest-
+        # distance search and wall-hugging in open aisles is expected back.
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.20   # was 0.15 (only 4.5 cm beyond the robot radius)
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: True
+      transform_tolerance: 1.0   # raised from 0.5 to absorb sim clock skips
+      rolling_window: True
+      # width/height must be integers - Costmap2DROS pre-declares these as
+      # int-typed parameters in its C++ constructor (confirmed empirically:
+      # 2.5 crashed controller_server with InvalidParameterTypeException,
+      # "is of type {integer}, setting it to {double} is not allowed" -
+      # matches the real webots_ros2_turtlebot reference config, which also
+      # uses plain integers here). Internally still divided by `resolution`
+      # to get cell counts, so a whole-number size loses nothing.
+      width: 3
+      height: 3
+      # Reverted 0.025 -> 0.05. The 0.025 value was set for the same
+      # "grid-connectivity" reasoning that motivated maps/room_map_hires.yaml
+      # (a discrete grid-search planner needs enough cells across a narrow
+      # passage to find a connected free path at all) - correct for
+      # SmacPlanner2D on the GLOBAL costmap, but this reasoning never
+      # actually applied here: MPPI doesn't grid-search, it scores
+      # continuous-space trajectories against costmap values, so it never
+      # needed sub-3cm grid fidelity to distinguish "inside the ~7.65cm
+      # free centreline" from "inside the wall's inscribed core" - 5cm
+      # cells are already several times finer than that margin.
+      #
+      # What 0.025 actually cost, live-diagnosed: a 3x3m rolling window at
+      # 0.025 is 14400 cells vs 3600 at 0.05 - a real 4x increase in what
+      # inflation_layer/range_layer recompute on every local_costmap
+      # update, all inside controller_server's own single-threaded
+      # executor (confirmed no configurable multi-threaded executor exists
+      # for this Humble build - checked `strings` on the installed
+      # controller_server binary and libcontroller_server_core.so, neither
+      # declares an executor_type/num_threads parameter). That executor is
+      # the SAME thread MPPI's rollouts run on, and controller_server
+      # itself reported "Control loop missed its desired rate of 20Hz" on
+      # nearly every cycle, plus its own local_costmap service calls
+      # (clear_entirely_local_costmap) timing out - a single overloaded
+      # executor starving its own callbacks, not just MPPI being slow.
+      # Reverting this was the single biggest lever available without
+      # touching controller_frequency or MPPI's own quality settings.
+      resolution: 0.025   # was 0.05: a 0.35 m station gap is only 7 cells at 0.05
+      # Matches global_costmap - see its comment above, including the
+      # footprint_padding fix. This layer's own inflation_radius (below)
+      # is now set equal to robot_radius, same as global_costmap's - see
+      # that inflation_layer's comment for the full current reasoning.
+      robot_radius: 0.105   # TurtleBot3 Burger circumscribed radius
+      footprint_padding: 0.0
+      # range_layer DELIBERATELY REMOVED from this list - the layer block
+      # itself is kept below, unused, with the full reasoning. Short version:
+      # a costmap MARKING layer cannot work with a sensor whose usable range
+      # is shorter than the robot's own inflation radius. The sonars sit
+      # 0.10m out from base_link with a 0.01-0.08m range, so every mark lands
+      # 0.11-0.18m from centre; InflationLayer then unconditionally paints
+      # cost 253 (INSCRIBED_INFLATED_OBSTACLE) within robot_radius (0.10m) of
+      # it, which reaches to 0.01-0.08m of the robot's own centre - and with
+      # 0.05m cell quantisation that reliably covers the centre cell itself.
+      # Net effect: the instant any sonar read below max range, the robot was
+      # standing in its own inscribed-lethal space. That is precisely the
+      # observed failure - fine in open space (all four read max 0.08 and
+      # clear_on_max_reading clears them), instant unrecoverable deadlock the
+      # moment it entered a 353mm passage and the side sensors began reading
+      # ~0.076m. It explains "Collision Ahead - Exiting Spin" (the behaviour
+      # collision-checker reading 253 at the robot's own pose), MPPI refusing
+      # to produce motion (CostCritic seeing critical cost everywhere), and
+      # the permanent RECOVER_BACKUP/IN_PLACE_SPIN cycling, all at once.
+      # The sensors are NOT wasted: they still feed nav2_collision_monitor
+      # (see the collision_monitor block at the end of this file), which is
+      # the correct consumer for a sub-robot-radius proximity sensor - it
+      # acts on the raw Range messages as a direct reflex and never routes
+      # them through inflation, so it cannot poison the robot's own pose.
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          # Real parameter names are raytrace_max_range/obstacle_max_range
+          # (confirmed via `strings` on liblayers.so, the actual plugin
+          # library ObstacleLayer is compiled into) - "raytrace_range" and
+          # "obstacle_range" don't exist and would have been silently
+          # ignored, leaving these at plugin defaults instead of 3.0/2.5.
+          raytrace_max_range: 3.0
+          obstacle_max_range: 2.5
+      # RangeSensorLayer: covers LDS-01's own minimum-range blind spot right
+      # against the robot's body, using the four sonar_* DistanceSensor
+      # devices added to simulation.wbt (see that file's extensionSlot
+      # comment and amr_simulation/resource/turtlebot_webots.urdf for the
+      # full sensor setup). Real plugin, confirmed installed
+      # (nav2_costmap_2d/range_sensor_layer.hpp) and registered under this
+      # exact name in nav2_costmap_2d's own costmap_plugins.xml. Every
+      # parameter below is a real member of that header
+      # (max_angle_/phi_v_/inflate_cone_/clear_threshold_/mark_threshold_/
+      # clear_on_max_reading_/no_readings_timeout_), cross-checked against
+      # the literal parameter-name strings in liblayers.so - "phi" is
+      # deliberately NOT set here: it isn't a YAML parameter at all, the
+      # layer reads each sensor's field_of_view straight off its own
+      # incoming sensor_msgs/Range message instead.
+      range_layer:
+        plugin: "nav2_costmap_2d::RangeSensorLayer"
+        topics: ["/ultrasonic/front", "/ultrasonic/left", "/ultrasonic/back", "/ultrasonic/right"]
+        # VARIABLE (not FIXED/ALL): our sensors report a real, continuously
+        # varying distance each reading (never min==max), so there's no
+        # ambiguity to leave to ALL's per-message auto-detection.
+        input_sensor_type: "VARIABLE"
+        clear_on_max_reading: true
+        clear_threshold: 0.2
+        mark_threshold: 0.8
+        inflate_cone: 1.0
+        no_readings_timeout: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        # RESTORED to 0.11/25.0 - the original asymmetric-costmap-fix.md
+        # local value, paired now with MPPI's temperature: 0.35 (see
+        # FollowPath below) for the first time. This pair was previously
+        # tested only alongside temperature: 0.2 (a sharper, greedier
+        # softmax), which this project already separately diagnosed as
+        # under-exploring a tight local costmap and producing timid,
+        # low-speed survivors (vx~0.05) rather than a confident narrow-gap
+        # trajectory. temperature: 0.35 gives MPPI room to average over a
+        # genuinely diverse rollout set against this same tight costmap
+        # instead of collapsing onto a few marginal ones - a different,
+        # untried fix for the timidity than further steepening this decay
+        # curve, which is what every round since has actually been doing
+        # (25 -> 50 -> 60 -> 100, with no improvement each time).
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.20   # same as global_costmap: planner and controller see the same wall margin
+
+# (A standalone recovery costmap - Decision B from
+# narrow-passage-navigation-fix-brief.md - was tried here and
+# removed again: the installed nav2_costmap_2d standalone executable
+# could not be reliably brought up by lifecycle_manager, which
+# aborted the ENTIRE nav2 bringup rather than just that one node.
+# See decisions-and-gotchas.md's "The standalone nav2_costmap_2d
+# executable cannot be renamed" and the entry after it for the full
+# history if this is ever revisited - it is not something to redo
+# casually.)
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: True
+    cycle_frequency: 10.0
+    # This has now been set to both "odom" and "map" across different tasks
+    # in this project's history, each time with a comment claiming the other
+    # was wrong. Settling it here with the actual verified reasoning: Spin/
+    # BackUp/DriveOnHeading all run short, safety-critical motions checked
+    # against the LOCAL costmap (see local_costmap.global_frame: odom above)
+    # - they need to operate in the same frame that costmap does, not the
+    # slower/jumpier map-frame AMCL estimate. odom is correct.
+    global_frame: odom
+    robot_base_frame: base_link
+    # Real top-level parameter is transform_tolerance (confirmed via
+    # `strings` on libbehavior_server_core.so) - "transform_timeout" doesn't
+    # exist here (that name belongs to the older Foxy/Galactic-era
+    # recoveries_server, not this installed Humble nav2_behaviors).
+    transform_tolerance: 1.0   # raised from 0.1 — tolerates TF latency during recovery maneuvers
+    # CORRECTION, live-diagnosed: max_rotational_vel/min_rotational_vel/
+    # rotational_acc_lim/simulate_ahead_time all sat nested under spin:/
+    # backup: below for most of this project's history, on the assumed
+    # (and wrong) belief that every TimedBehavior parameter follows the
+    # same per-plugin nesting convention as progress_checker/
+    # general_goal_checker. Confirmed live via `ros2 param list
+    # /behavior_server` on the actually-running node: these four names
+    # exist ONLY at this top level (`spin.max_rotational_vel` etc. is
+    # "Parameter not set" - `ros2 param get` fails outright) - this
+    # nav2_behaviors build declares them without a per-plugin prefix at
+    # all, shared across whichever behaviors use them (Spin's own
+    # rotation speed; simulate_ahead_time shared by Spin/BackUp/
+    # DriveOnHeading's common CostmapTopicCollisionChecker ahead-check).
+    # The nested copies under spin:/backup: below were silently ignored
+    # this entire time - Spin ran on its compiled default (matches the
+    # w=1.00 rad/s seen live, vs. the 0.25 that was never actually
+    # applied) regardless of what this file said.
+    max_rotational_vel: 0.25
+    min_rotational_vel: 0.1
+    rotational_acc_lim: 0.75
+    # costmap_topic/footprint_topic deliberately left at their nav2
+    # defaults (local_costmap/costmap_raw, local_costmap/published_footprint)
+    # - a Decision-B attempt to point these at a separate, standalone
+    # recovery costmap was tried and reverted; see decisions-and-gotchas.md
+    # if that's ever revisited.
+    simulate_ahead_time: 1.0   # raised from 0.4 - longer collision-ahead check window, shared by Spin/BackUp/DriveOnHeading
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    # Plugin strings must be the pluginlib-registered "name=" alias (slash
+    # form) - confirmed via nav2_behaviors' behavior_plugin.xml, which
+    # explicitly registers "nav2_behaviors/Spin" etc. as names, not just
+    # types. The double-colon C++-namespace form ("nav2_behaviors::Spin")
+    # does NOT match a registered name here and would fail to load -
+    # opposite situation from nav2_controller's checkers, which register no
+    # name= alias at all and require the double-colon type= form instead.
+    spin:
+      plugin: "nav2_behaviors/Spin"
+      # Stale-comment correction (kept for the historical record, no
+      # longer describing this robot): the note this used to carry here
+      # about Spin's "swept radius (0.214m, this footprint's outer
+      # corner)" described the old rectangular mecanum chassis, from
+      # before this project moved to TurtleBot3 Burger. That chassis's
+      # rotation swept a wider corner arc than its own resting footprint,
+      # a real added collision risk. This robot's costmaps declare it with
+      # a plain `robot_radius` (circular, no footprint polygon anywhere in
+      # this file) - a circle rotated about its own center sweeps exactly
+      # the same disk it already occupies at rest, so pure in-place
+      # rotation adds ZERO additional collision exposure versus just
+      # sitting still. Confirmed both Spin and BackUp are collision-checked
+      # live against the local costmap regardless (`isCollisionFree`/
+      # `CostmapTopicCollisionChecker`, confirmed via `strings` on
+      # libnav2_spin_behavior.so/libnav2_back_up_behavior.so - "Collision
+      # Ahead - Exiting Spin"/"...Exiting DriveOnHeading" are real,
+      # live-firing log lines), so if Spin exits with zero rotation
+      # completed, that means the robot's CURRENT pose already reads as
+      # colliding before it even starts moving - matching a "Starting
+      # point in lethal space" planner error seen alongside it. No
+      # recovery behavior should (or safely can) move the robot further
+      # once that's true.
+      #
+      # max_rotational_vel/min_rotational_vel/rotational_acc_lim/
+      # simulate_ahead_time do NOT nest here - see behavior_server's own
+      # top-level comment above for the live-diagnosed correction.
+      # spin_dist/spin_speed removed: never real parameters for this plugin
+      # at all (confirmed absent from libnav2_spin_behavior.so) - Spin's
+      # target angle/speed come from the BT action goal (the <Spin> node's
+      # own XML attributes), not a YAML parameter. This was dead config
+      # since Milestone 3, uncaught until now.
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+      # backup_dist/backup_speed removed: never real parameters for this
+      # plugin (confirmed absent from libnav2_back_up_behavior.so across
+      # multiple checks this project). BackUp's distance/speed come from
+      # the BT's own <BackUp backup_dist=".." backup_speed=".."/> node
+      # attributes, not nav2_params.yaml.
+      #
+      # simulate_ahead_time does NOT nest here either - see
+      # behavior_server's own top-level comment above; a nested copy sat
+      # here silently ignored for most of this project's history.
+      #
+      # Real, still-unconfigured BackUp-specific parameters exist and are
+      # worth knowing about if this behavior is revisited:
+      # backup.minimum_speed/acceleration_limit/deceleration_limit are all
+      # genuinely live on the running node (confirmed via `ros2 param list
+      # /behavior_server`) - left at their compiled defaults for now since
+      # nothing in this project has asked to tune BackUp's own speed
+      # profile specifically, only its BT-side distance (see the
+      # navigate-to-pose BT XML's <BackUp backup_dist=".." backup_speed=..
+      # "/>).
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: True
+    global_frame: map
+    robot_base_frame: base_link
+    # bt_navigator has no "odom_frame" parameter (confirmed via `strings` on
+    # libbt_navigator_core.so - only "odom_topic" exists, a topic name, not
+    # a TF frame). rf2o_laser_odometry remains the sole TF broadcaster for
+    # odom->base_link regardless of this setting - see controller_server's
+    # odom_topic comment above for why this now points at plain /odom
+    # (wheel encoders, high-rate) rather than /odom_rf2o for the velocity-
+    # feedback role this parameter actually serves.
+    odom_topic: /odom
+    # default_nav_to_pose_bt_xml: this build's real parameter name
+    # (confirmed via `strings` on libbt_navigator_core.so - not
+    # "default_bt_xml_filename", which would have been a silent no-op).
+    # Set in navigation.launch.py, not hardcoded here, since it needs
+    # amr_navigation's own installed share directory path (same pattern
+    # this launch file already uses for params_file/map) - see that file
+    # and amr_navigation/behavior_trees/navigate_to_pose_w_replanning_and_
+    # recovery.xml for why a project-owned copy of the stock BT is now
+    # used instead of bt_navigator's built-in default.
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: true
+    # Bridges controller_server's raw /cmd_vel_raw output to /cmd_vel_smoothed
+    # (twist_mux's navigation channel - see twist_mux.yaml). Clamps velocity
+    # step-changes to the acc/decel budget, eliminating:
+    #   - Motor stutter from abrupt Twist transitions between DWB cycles
+    #   - Turn overshoot from instantaneous omega commands
+    # No "plugin" key here: VelocitySmoother is a standalone lifecycle node,
+    # not a pluginlib-loaded plugin - confirmed via `strings` on
+    # libvelocity_smoother_core.so, which declares no such parameter. This
+    # node was also never actually launched anywhere until now (see
+    # navigation.launch.py) - every velocity_smoother setting in this file
+    # was dead config until this fix.
+    smoothing_frequency: 20.0
+    scale_velocities: true
+    feedback: "OPEN_LOOP"
+    # theta bounds halved (1.2 -> 0.6) to match FollowPath's max_vel_theta -
+    # this ceiling must stay >= what DWB can actually command, otherwise
+    # the smoother would clip a valid slow-turn command; linear (x) bounds
+    # are unchanged since only rotation was asked to slow down.
+    max_velocity: [0.18, 0.0, 0.9]
+    min_velocity: [-0.08, 0.0, -0.9]
+    # Tightened alongside the RotationShimController/RPP switch (real
+    # VelocitySmoother parameters are max_accel/max_decel - confirmed via
+    # `strings` on libvelocity_smoother_core.so; "accel_lim_v"/"accel_lim_w"/
+    # "decel_lim_v"/"decel_lim_w" from a since-corrected task prompt don't
+    # exist on this plugin at all). Lowered from 0.8/1.0 (linear) and
+    # 1.5/1.5 (angular) for less motor-torque chatter on transitions -
+    # matches this file's max_velocity ceiling still being 0.35 (unchanged),
+    # well above RPP's own 0.22 desired_linear_vel cruise target, so this
+    # only smooths transitions, it doesn't cap cruise speed.
+    # theta accel/decel halved (1.2 -> 0.6) alongside max_velocity's theta
+    # bound above, so the smoothed ramp toward the new lower ceiling is
+    # gentler too, consistent with FollowPath's acc_lim_theta/decel_lim_theta.
+    max_accel: [0.5, 0.0, 1.5]
+    max_decel: [-0.6, 0.0, -1.5]
+    # odom_topic/odom_duration are unused while feedback is OPEN_LOOP (no
+    # actual velocity feedback loop - DWB already handles trajectory
+    # consistency), but set correctly anyway in case feedback is ever
+    # switched to CLOSED_LOOP. Points at rf2o_laser_odometry's /odom_rf2o,
+    # same authority as everything else in this file.
+    odom_topic: /odom
+    odom_duration: 0.1
+
+# CollisionMonitor: real nav2_util::LifecycleNode, confirmed installed
+# (nav2_collision_monitor/collision_monitor_node.hpp) and launched in
+# navigation.launch.py, spliced in after twist_mux (see sim.launch.py's
+# twist_mux_node comment) as a last, source-agnostic safety net driven by
+# the four sonar_* ultrasonic sensors - independent of and faster-reacting
+# than the costmap/planner path. Every parameter name below is confirmed
+# either via `strings` on libcollision_monitor_core.so or by reading
+# nav2_collision_monitor's own real reference config
+# (params/collision_monitor_params.yaml) and range.hpp header directly.
+collision_monitor:
+  ros__parameters:
+    use_sim_time: True
+    # base_link, not the stock example's base_footprint - matches this
+    # project's own established convention everywhere else (AMCL, rf2o,
+    # costmaps all key off base_link; base_footprint is only ever a
+    # static zero-offset TF child of it here).
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    # Reads whatever twist_mux actually produced (teleop or Nav2 - see
+    # sim.launch.py) and republishes the final, actually-driven /cmd_vel -
+    # this must be the true last stage before the WebotsController driver,
+    # so an ultrasonic-detected near-collision can override a manual
+    # teleop command too, not just Nav2's own output.
+    cmd_vel_in_topic: "/cmd_vel_premonitor"
+    cmd_vel_out_topic: "/cmd_vel"
+    transform_tolerance: 0.5
+    source_timeout: 1.0
+    base_shift_correction: True
+    stop_pub_timeout: 2.0
+    # Circle, not polygon: this robot is genuinely circular (robot_radius
+    # everywhere else in this project), so a radius-from-base_link check
+    # is the correct model, not an arbitrary rectangle. Two zones, per
+    # direct request: a wider "start slowing down" ring and a much
+    # tighter "about to hit, stop now" ring - both sized as robot_radius
+    # (0.1m, the hull surface) plus a small extra margin, since that's
+    # where a real obstacle actually is relative to the robot's centre,
+    # not relative to the hull.
+    polygons: ["CollisionStop", "CollisionSlow"]
+    # Direction-aware last-line stop (APPROACH model, circle = robot footprint). The old "stop"
+    # circle zeroed EVERY command whenever a wall was inside it - including the reverse/spin that
+    # recovery uses to get away, which pinned the robot nose-to-wall forever. APPROACH only
+    # limits speed so the time-to-collision along the commanded motion stays >= 0.5 s, so it
+    # creeps up to ~1-2 cm from a wall and always lets the robot move away.
+    CollisionStop:
+      type: "circle"
+      radius: 0.11
+      action_type: "approach"
+      time_before_collision: 0.5
+      simulation_time_step: 0.05
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_stop_zone"
+      enabled: True
+    CollisionSlow:
+      type: "circle"
+      # 0.13, shrunk from 0.16 (Decision C - see the narrow-passage-fix
+      # brief in project root). The previous 0.16 was explicitly, correctly
+      # designed to be active for essentially the entire time the robot
+      # spends inside any of this layout's passages (353-460mm) - but that
+      # meant it was compounding, at 100% duty cycle inside every passage,
+      # with MPPI's OWN graduated caution near costed cells (CostCritic/
+      # ConstraintCritic already slow it down for the identical reason,
+      # since it's reading the SAME costmap the global plan routed
+      # through). Two independent layers of graduated caution stacking
+      # continuously in the same physical space is redundant, not
+      # additive safety, and had already needed one compensating fix this
+      # session (slowdown_ratio 0.3 -> 0.6, when the compounded cut
+      # collapsed commanded velocity below controller_server's
+      # min_x_velocity_threshold and triggered "Failed to make progress").
+      #
+      # 0.13 is computed from amr_navigation/scripts/calibrate_inflation.py's
+      # own passage detection, not eyeballed: this map's narrowest genuine
+      # passage (excluding gaps below 2x robot_radius, which are
+      # wall-thickness artifacts no route ever crosses) is 300mm wide, i.e.
+      # 150mm from centre to wall at perfect centring. 0.13 sits 2cm below
+      # that, and 1.5cm above CollisionStop's 0.115 (kept untouched - the
+      # genuine last-resort layer, per the brief, is not part of this
+      # change) - so CollisionSlow no longer fires for merely BEING inside
+      # a nominally-tight passage, only when a sensor reading indicates a
+      # real, closer-than-expected approach (drift toward one wall, an
+      # actual obstacle) in EITHER a passage or the open aisles. MPPI's own
+      # critics are now the sole graduated-caution authority for ordinary,
+      # well-centred passage transit; collision_monitor's role there
+      # narrows to "something is unexpectedly close," which is what a
+      # last-resort-adjacent layer should actually be watching for.
+      radius: 0.17    # starts easing off ~6 cm before the stop ring
+      action_type: "slowdown"
+      # 0.75, raised from 0.6 per asymmetric-costmap-fix.md: with MPPI no
+      # longer freezing under a too-wide local inflation band (see
+      # local_costmap's inflation_layer above), this ring goes back to being
+      # the safety net it's meant to be rather than the primary caution
+      # layer - a gentler slowdown is enough now that MPPI's own critics
+      # handle ordinary passage transit.
+      slowdown_ratio: 0.6
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_slowdown_zone"
+      enabled: True
+    # Range: nav2_collision_monitor's own dedicated observation source
+    # type for exactly this sensor class (its real header docstring reads
+    # "Implementation for IR/ultrasound range sensor source" - not
+    # repurposed from scan/pointcloud). obstacles_angle is the one
+    # sensor-specific real parameter here (confirmed in range.hpp) - the
+    # angular spacing used to turn one Range reading's cone into discrete
+    # points along its arc for the circle-intersection check; ~3 degrees
+    # gives a reasonably fine arc without excessive point counts for a
+    # sensor this short-range.
+    observation_sources: ["scan", "sonar_front", "sonar_left", "sonar_back", "sonar_right"]
+    # lidar added as a source: the sonars only cover 4 narrow cones, a wall at 45 degrees was invisible to the last-line stop
+    scan:
+      type: "scan"
+      topic: "/scan"
+      enabled: True
+    sonar_front:
+      type: "range"
+      topic: "/ultrasonic/front"
+      obstacles_angle: 0.05
+      enabled: True
+    sonar_left:
+      type: "range"
+      topic: "/ultrasonic/left"
+      obstacles_angle: 0.05
+      enabled: True
+    sonar_back:
+      type: "range"
+      topic: "/ultrasonic/back"
+      obstacles_angle: 0.05
+      enabled: True
+    sonar_right:
+      type: "range"
+      topic: "/ultrasonic/right"
+      obstacles_angle: 0.05
+      enabled: True

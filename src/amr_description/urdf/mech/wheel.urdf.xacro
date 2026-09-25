@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Measured directly off rmp_bot's r_wheel_1.stl bounding box
+       (github.com/ravithakur-projects/ROS-Three-Wheeled-Robot-Navigation-Project):
+       X/Z extent ~65mm (diameter) -> radius 32.5mm, Y extent 25mm (width).
+       wheel_radius happens to numerically match this project's old mecanum
+       wheel radius exactly - coincidence, not reused from the old file.
+       wheel_mass is rmp_bot's own r_wheel_1 inertial mass (0.1182... kg). -->
+  <xacro:property name="wheel_radius" value="0.0325" />
+  <xacro:property name="wheel_width" value="0.025" />
+  <xacro:property name="wheel_mass" value="0.1182" />
+  <!-- rmp_bot joint origins: wheels at x=-0.05 (rear of base_link),
+       y=+-0.085 (track half-width) -> wheel_separation = 0.170m. -->
+  <xacro:property name="wheel_xoff" value="-0.05" />
+  <xacro:property name="wheel_separation" value="0.170" />
+
+  <!-- Plain differential-drive wheel - no contact_material split by
+       diagonal roller angle like the old mecanum macro had (both wheels
+       share the single "wheel_material" Webots ContactProperties entry,
+       see simulation.wbt/fix_proto.py), since these are ordinary wheels
+       with one rolling axis, not angled mecanum rollers. -->
+  <xacro:macro name="wheel" params="prefix side y_reflect">
+    <link name="${prefix}${side}_wheel_link">
+      <visual>
+        <!-- NOT the old mecanum wheel's rpy="1.5708 0 0"/identity-origin
+             convention - that was for a differently-authored mesh. rmp_bot's
+             l_wheel_1.stl/r_wheel_1.stl raw vertices are already expressed
+             directly in base_link's own frame (a common quirk of the
+             Fusion360 URDF exporter: it cancels this out in its own xacro by
+             setting visual origin = -joint origin, e.g. r_wheel_1's joint is
+             at xyz="-0.05 -0.085 0.0325" and its visual origin is exactly
+             the negation, "0.05 0.085 -0.0325" - confirmed by reading their
+             xacro directly, not guessed). No rotation either: the mesh's
+             raw bounding box already has its thin 25mm dimension on Y (the
+             joint's own rotation axis), so it needs rpy 0 0 0, not a 90deg
+             flip. Reproducing that same cancellation here algebraically
+             (negative of this joint's own xyz) so the mesh recenters onto
+             wheel_link's local origin regardless of wheel_xoff/y_reflect. -->
+        <origin xyz="${-wheel_xoff} ${-y_reflect*(wheel_separation/2)} ${-wheel_radius}" rpy="0 0 0"/>
+        <geometry>
+          <!-- rmp_bot's STLs are raw CAD exports in millimeters. -->
+          <mesh filename="package://amr_description/meshes/${side}_wheel.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="dark_gray">
+          <color rgba="0.2 0.2 0.2 1.0"/>
+        </material>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+      </collision>
+
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${wheel_mass}"/>
+        <inertia
+          ixx="${(wheel_mass/12.0) * (3*wheel_radius*wheel_radius + wheel_width*wheel_width)}" ixy="0" ixz="0"
+          iyy="${(wheel_mass/2.0) * (wheel_radius*wheel_radius)}" iyz="0"
+          izz="${(wheel_mass/12.0) * (3*wheel_radius*wheel_radius + wheel_width*wheel_width)}"/>
+      </inertial>
+    </link>
+
+    <joint name="${prefix}${side}_wheel_joint" type="continuous">
+      <axis xyz="0 1 0"/>
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}${side}_wheel_link"/>
+      <origin xyz="${wheel_xoff} ${y_reflect*(wheel_separation/2)} ${wheel_radius}" rpy="0 0 0"/>
+      <dynamics damping="0.01" friction="0.01"/>
+      <limit effort="30.0" velocity="15.0"/>
+    </joint>
+
+    <!-- Gazebo / ROS 2 control surface properties -->
+    <gazebo reference="${prefix}${side}_wheel_link">
+      <mu1>0.8</mu1>
+      <mu2>0.8</mu2>
+      <fdir1>1 0 0</fdir1>
+      <surface>
+        <friction>
+            <ode>
+                <mu>0.8</mu>
+                <mu2>0.8</mu2>
+                <fdir1>1 0 0</fdir1>
+            </ode>
+        </friction>
+      </surface>
+      <visual>
+          <material>
+              <ambient>0.2 0.2 0.2 1.0</ambient>
+              <diffuse>0.2 0.2 0.2 1.0</diffuse>
+              <specular>0.2 0.2 0.2 1.0</specular>
+              <emissive>0.0 0.0 0.0 0.0</emissive>
+          </material>
+      </visual>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

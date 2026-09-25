@@ -1,0 +1,105 @@
+<?xml version="1.0" ?>
+<!--
+  Project-owned fork of webots_ros2_turtlebot's own
+  resource/turtlebot_webots.urdf (installed copy read directly and
+  reproduced verbatim below, aside from the four appended <device> blocks).
+
+  Why forked: webots_ros2_driver auto-instantiates a Ros2DistanceSensor
+  plugin for every WB_NODE_DISTANCE_SENSOR device on the robot with zero
+  <device> entry needed at all (confirmed via WebotsNode.cpp's device-type
+  switch) - so the four sonar_* DistanceSensor nodes added to
+  simulation.wbt's TurtleBot3Burger.extensionSlot would work without this
+  file. But left unconfigured, each one's topic defaults to
+  "~/<device_name>" (Ros2SensorPlugin.cpp), which resolves relative to the
+  driver node's own name rather than a clean, predictable absolute path -
+  not something nav2_params.yaml's local_costmap.range_layer.topics list
+  could reference reliably. The <device> blocks below give each one an
+  explicit topicName/frameName instead, the same pattern already used for
+  LDS-01's Lidar entry.
+-->
+<robot name="TurtleBot3 Burger Webots">
+    <webots>
+        <device reference="LDS-01" type="Lidar">
+            <ros>
+                <enabled>true</enabled>
+                <updateRate>5</updateRate>
+                <topicName>/scan</topicName>
+                <alwaysOn>false</alwaysOn>
+                <frameName>LDS-01</frameName>
+            </ros>
+        </device>
+
+        <plugin type="webots_ros2_driver::Ros2IMU">
+            <enabled>true</enabled>
+            <updateRate>20</updateRate>
+            <topicName>/imu</topicName>
+            <alwaysOn>false</alwaysOn>
+            <frameName>imu_link</frameName>
+            <inertialUnitName>inertial_unit</inertialUnitName>
+            <gyroName>gyro</gyroName>
+            <accelerometerName>accelerometer</accelerometerName>
+        </plugin>
+
+        <plugin type="webots_ros2_control::Ros2Control" />
+
+        <!-- type="package_name.file_name.class_name" -->
+        <plugin type="webots_ros2_turtlebot.plugin_example.PluginExample">
+            <parameterExample>someValue</parameterExample>
+        </plugin>
+
+        <!-- Four ultrasonic-style proximity sensors - see simulation.wbt's
+             extensionSlot for the real DistanceSensor node definitions
+             these bind to by device name (reference="sonar_*" must match
+             each DistanceSensor node's own "name" field exactly). -->
+        <device reference="sonar_front" type="DistanceSensor">
+            <ros>
+                <enabled>true</enabled>
+                <updateRate>20</updateRate>
+                <topicName>/ultrasonic/front</topicName>
+                <alwaysOn>true</alwaysOn>
+                <frameName>sonar_front</frameName>
+            </ros>
+        </device>
+        <device reference="sonar_left" type="DistanceSensor">
+            <ros>
+                <enabled>true</enabled>
+                <updateRate>20</updateRate>
+                <topicName>/ultrasonic/left</topicName>
+                <alwaysOn>true</alwaysOn>
+                <frameName>sonar_left</frameName>
+            </ros>
+        </device>
+        <device reference="sonar_back" type="DistanceSensor">
+            <ros>
+                <enabled>true</enabled>
+                <updateRate>20</updateRate>
+                <topicName>/ultrasonic/back</topicName>
+                <alwaysOn>true</alwaysOn>
+                <frameName>sonar_back</frameName>
+            </ros>
+        </device>
+        <device reference="sonar_right" type="DistanceSensor">
+            <ros>
+                <enabled>true</enabled>
+                <updateRate>20</updateRate>
+                <topicName>/ultrasonic/right</topicName>
+                <alwaysOn>true</alwaysOn>
+                <frameName>sonar_right</frameName>
+            </ros>
+        </device>
+    </webots>
+
+    <ros2_control name="WebotsControl" type="system">
+        <hardware>
+            <plugin>webots_ros2_control::Ros2ControlSystem</plugin>
+        </hardware>
+        <joint name="right wheel motor">
+            <state_interface name="position"/>
+            <command_interface name="velocity"/>
+        </joint>
+        <joint name="left wheel motor">
+            <state_interface name="position"/>
+            <command_interface name="velocity"/>
+        </joint>
+    </ros2_control>
+</robot>

@@ -1,0 +1,66 @@
+amcl:
+  ros__parameters:
+    use_sim_time: True
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.1
+    alpha4: 0.1
+    alpha5: 0.1
+    base_frame_id: "base_link"       # base_footprint is bypassed under use_webots:=true
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    scan_topic: "scan"
+    transform_tolerance: 1.5         # Allow up to 1.5s of transform delay for sim jitter
+
+    # These values are expressed in the MAP frame (AMCL's initial_pose is
+    # always map-frame, not Webots' world frame) - they do NOT need to
+    # numerically match simulation.wbt's amr_robot spawn translation
+    # (1.27 0.38 0.104 / yaw 3.14159), which is a different coordinate
+    # system with its own origin. This is the verified map-frame pose of
+    # the robot's actual boot-time position relative to room_map's origin.
+    #
+    # set_initial_pose is REQUIRED for AMCL to actually adopt these values
+    # on startup - confirmed via its own parameter description string in
+    # libamcl_core.so: "Requires that AMCL is provided an initial pose
+    # either via topic or initial_pose* parameter (with parameter
+    # set_initial_pose: true) when reset." Without it, initial_pose.* is
+    # silently ignored and AMCL still waits for a manual 2D Pose Estimate.
+    #
+    # IMPORTANT: if the robot's real starting position relative to the map
+    # ever changes (new spawn point, new saved map, robot moved by hand
+    # before boot), re-verify and update these four numbers directly -
+    # they are not derived from simulation.wbt automatically.
+    set_initial_pose: true
+    initial_pose:
+      x: 1.270
+      y: 0.380
+      z: 0.0
+      yaw: 3.1416   # map frame == Webots world frame (room_map_world)
+
+    # Switched from OmniMotionModel to DifferentialMotionModel for the 2WD +
+    # caster transition (confirmed real via `strings` on libamcl_core.so).
+    # Kept in sync with nav2_navigation/config/nav2_params.yaml's amcl block
+    # per this file's own duplication note above - both must agree on the
+    # robot's actual drive kinematics or one of the two localization entry
+    # points silently mismodels the robot's motion.
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+
+    # Particle count tuning for local tracking
+    min_particles: 500
+    max_particles: 2000
+
+    # Tightened for mecanum wheel slip in narrow doorways - a slipping
+    # wheel makes odometry-only prediction between updates unreliable, so
+    # correcting against the LiDAR scan more often (every 5cm/~3deg
+    # instead of 10cm/~4.6deg) limits how far dead reckoning can drift
+    # before the next correction. Kept in sync with nav2_params.yaml's
+    # amcl block - see that file's comment on the duplication.
+    update_min_d: 0.05
+    update_min_a: 0.05
+    resample_interval: 1             # Resample on every update for immediate convergence
+
+    # Laser scanner parameter tuning
+    laser_model_type: "likelihood_field"
+    laser_min_range: 0.1
+    laser_max_range: 12.0
+    max_beams: 180                   # denser scan matching for tighter convergence; costs more CPU per update

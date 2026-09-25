@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="load_sim_control" params="robot_name use_gazebo">
+    <xacro:if value="${use_gazebo}">
+      <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+          <parameters>$(find amr_description)/config/${robot_name}/controllers.yaml</parameters>
+          <ros>
+            <remapping>/controller_manager/robot_description:=/robot_description</remapping>
+          </ros>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+  </xacro:macro>
+
+  <!--
+    Webots simulation bridge.
+
+    IMPORTANT: <webots> must be a DIRECT child of <robot>, never nested inside
+    <gazebo> - webots_ros2_driver's WebotsNode.cpp looks it up via
+    robotXMLElement->FirstChildElement("webots"), which will not descend into
+    a <gazebo> wrapper. (Verified against the actual installed
+    webots_ros2_driver C++ source, not assumed.)
+
+    <device reference="..."> is matched against the Webots device's own
+    `name` field (set on the native Lidar/Camera/... nodes in the PROTO),
+    NOT a URDF link or joint name - also verified against WebotsNode.cpp's
+    getDeviceRosProperties(), which is called with wb_device_get_name(device).
+
+    Only device types in WebotsNode.cpp's static-plugin switch (Lidar,
+    Camera, RangeFinder, GPS, DistanceSensor, LightSensor, LED, Pen, Emitter,
+    Receiver, Compass, VacuumGripper) get an automatic per-device ROS bridge
+    from a bare <device> tag. InertialUnit/Gyro/Accelerometer and
+    PositionSensor are NOT in that switch, so they are not reachable this
+    way - they are consumed instead by the two <plugin> entries below
+    (Ros2IMU combines the three IMU devices into one sensor_msgs/Imu topic;
+    the wheel PositionSensors are read directly by
+    webots_ros2_control::Ros2ControlSystem via the joint's state_interface,
+    surfacing on the standard /joint_states topic through
+    joint_state_broadcaster - no separate per-wheel topic exists).
+  -->
+  <webots>
+    <!-- bridges the <ros2_control> block (declared in ros2_control.urdf.xacro)
+         to the wheel joints' Motor + PositionSensor devices in the PROTO -->
+    <plugin type="webots_ros2_control::Ros2Control" />
+
+    <!-- combines InertialUnit "IMU" + Gyro "gyroscope" + Accelerometer
+         "accelerometer" into a single sensor_msgs/Imu on /imu/data.
+
+         frameName is REQUIRED: without it Ros2IMU leaves header.frame_id='',
+         which makes robot_localization's EKF unable to look up the sensor's
+         transform in the TF tree - the IMU measurements are either silently
+         dropped or anchored to the wrong frame, causing yaw drift even when
+         the filter appears to be running. Must match the URDF link name set
+         in amr.urdf.xacro (imu -> imu_link, via the xacro:imu macro's
+         frame_id param which appends "_link"). -->
+    <plugin type="webots_ros2_driver::Ros2IMU">
+      <inertialUnitName>IMU</inertialUnitName>
+      <gyroName>gyroscope</gyroName>
+      <accelerometerName>accelerometer</accelerometerName>
+      <topicName>/imu/data</topicName>
+      <frameName>imu_link</frameName>
+    </plugin>
+
+    <!-- combines Camera "camera" + RangeFinder "range_finder" into aligned
+         RGB + depth output -->
+    <plugin type="webots_ros2_driver::Ros2RGBD">
+      <camera>camera</camera>
+      <rangeFinder>range_finder</rangeFinder>
+      <topicName>/camera/rgbd</topicName>
+    </plugin>
+
+    <!-- Lidar IS in the static-plugin switch, so this <device> just pins its
+         topic name to the ROS 2 navigation-stack convention rather than
+         Webots' auto-guessed default.
+
+         frameName is REQUIRED here: Ros2SensorPlugin.cpp defaults
+         mFrameName to the Webots device's own internal name ("Lidar", from
+         parameters["name"] = wb_device_get_name(device) in
+         WebotsNode.cpp) whenever <frameName> isn't given. That default
+         doesn't exist anywhere in our TF tree (the URDF frame is
+         "laser_frame"), so tf2's MessageFilter in RViz's LaserScan display
+         could never resolve a transform for it - messages queued forever
+         waiting on a frame that would never arrive, eventually crashing
+         RViz outright (observed as "Message Filter dropping message:
+         frame 'Lidar' ... queue is full" spam, then a segfault). -->
+    <device reference="Lidar" type="Lidar">
+      <ros>
+        <topicName>/scan</topicName>
+        <alwaysOn>true</alwaysOn>
+        <frameName>laser_frame</frameName>
+      </ros>
+    </device>
+  </webots>
+</robot>

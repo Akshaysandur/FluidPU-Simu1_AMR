@@ -1,0 +1,58 @@
+# controller_manager provides the necessary infrastructure to manage multiple controllers
+# efficiently and robustly using ROS 2 Control.
+controller_manager:
+ ros__parameters:
+   update_rate: 50  # Hz
+
+   # Declare the controllers
+   joint_state_broadcaster:
+     type: joint_state_broadcaster/JointStateBroadcaster
+
+   diff_drive_controller:
+     type: diff_drive_controller/DiffDriveController
+
+# Parameters for the differential-drive controller.
+#
+# NOTE: targets ros-humble-diff-drive-controller 2.53.1 as actually installed
+# (verified via `strings` on libdiff_drive_controller.so) - unlike this
+# project's mecanum_drive_controller (a ChainableController with no direct
+# cmd_vel subscription), this build IS the classic topic-based controller:
+# it subscribes to <controller_name>/cmd_vel_unstamped (geometry_msgs/Twist,
+# since use_stamped_vel is false below) or .../cmd_vel (TwistStamped) if set
+# true, and echoes the applied/limited command back out on
+# <controller_name>/cmd_vel_out.
+diff_drive_controller:
+ ros__parameters:
+   left_wheel_names: ["left_wheel_joint"]
+   right_wheel_names: ["right_wheel_joint"]
+
+   # wheel.urdf.xacro's wheel_radius/wheel_separation - measured off
+   # rmp_bot's r_wheel_1.stl bounding box and joint anchors (y=+-0.085).
+   wheel_radius: 0.0325
+   wheel_separation: 0.170
+
+   # base_footprint is bypassed under use_webots:=true (base.urdf.xacro) -
+   # base_link is the actual root of the TF tree in simulation.
+   base_frame_id: base_link
+   odom_frame_id: odom
+   # False regardless of whether this build's TF broadcast path is actually
+   # reachable internally: rf2o_laser_odometry is this project's one and
+   # only intended odom->base_link TF publisher (publish_tf: true in
+   # rf2o_params.yaml). Setting this false is what guarantees no competing
+   # broadcaster fights it for the same transform, not an assumption about
+   # what the controller would otherwise do.
+   enable_odom_tf: false
+
+   use_stamped_vel: false
+   cmd_vel_timeout: 0.5
+
+   # Non-zero covariance diagonals: same rationale this project used for
+   # the old mecanum_drive_controller entry - all-zero covariance reads as
+   # infinite certainty to any consumer expecting a real covariance (e.g. an
+   # EKF), which is numerically degenerate. Not currently consumed by
+   # anything (ekf_node is disabled - see sim.launch.py), kept for parity/
+   # in case that changes.
+   # Pose: [x, y, z, roll, pitch, yaw] - z/roll/pitch unused (two_d_mode)
+   pose_covariance_diagonal:  [0.001, 0.001, 0.0, 0.0, 0.0, 0.005]
+   # Twist: [vx, vy, vz, vroll, vpitch, vyaw]
+   twist_covariance_diagonal: [0.001, 0.001, 0.0, 0.0, 0.0, 0.005]

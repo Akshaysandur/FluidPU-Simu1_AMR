@@ -1,0 +1,159 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+<!-- wheel_width/wheel_radius here are for the base_z_offset computation
+     only - the authoritative per-wheel values (now measured off rmp_bot's
+     r_wheel_1.stl bounding box: radius 32.5mm, width 25mm) live in
+     wheel.urdf.xacro. Duplicated rather than xacro:included across files
+     to avoid a circular include; kept numerically identical to that file
+     by convention, same as the original mecanum version of this file did. -->
+<xacro:property name="wheel_width" value="0.025" />
+<xacro:property name="wheel_radius" value="0.0325" />
+<!-- rmp_bot's base_link inertial mass (github.com/ravithakur-projects/
+     ROS-Three-Wheeled-Robot-Navigation-Project) - chassis body only, not
+     including the wheels/caster/sensor payload, matching this project's
+     existing convention of a chassis-only base_mass with sensors/wheels
+     mass-modeled as separate links. -->
+<xacro:property name="base_mass" value="7.21" />
+
+<!-- Collision/inertial box sized from rmp_bot's base_link.stl bounding box
+     (200mm x 170mm x 110mm, length x width x height - measured directly off
+     the mesh, not the STL's lidar/lidar-mast-inclusive fallback that caused
+     issues on the old chassis). base_link origin is at ground level (matches
+     rmp_bot's own convention: its wheel joints place the axle at
+     z=+wheel_radius above base_link, i.e. base_link = ground plane), so the
+     chassis body centroid is offset +Z by chassis_height/2 only - no
+     wheel_radius term needed here since rmp_bot's base_link origin is
+     already at ground level, unlike the old chassis which had it offset. -->
+<xacro:property name="chassis_length" value="0.20"/>
+<xacro:property name="chassis_width"  value="0.17"/>
+<xacro:property name="chassis_height" value="0.11"/>
+<xacro:property name="base_x_offset" value="0.0"/>
+<xacro:property name="base_z_offset" value="${chassis_height / 2.0}"/>
+
+<!-- Passive rear caster: uses rmp_bot's real caster_1.stl mesh directly for
+     both visual AND collision (not a primitive approximation) - matching
+     their own xacro exactly, which also collides against the raw mesh
+     rather than a sphere/box stand-in. Mass and inertia are rmp_bot's own
+     measured caster_1 inertial values, not a derived formula. -->
+<xacro:property name="caster_mass" value="0.04549"/>
+<xacro:property name="caster_ixx" value="3e-06"/>
+<xacro:property name="caster_iyy" value="3e-06"/>
+<xacro:property name="caster_izz" value="7e-06"/>
+<!-- rmp_bot's exact joint (Rigid5) and visual/collision origin values for
+     caster_1, reproduced as-is rather than re-derived: joint places the
+     link at xyz="0.1 0.0 0.0075" relative to base_link; the mesh's own
+     visual/collision origin is the exact negation, "-0.1 -0.0 -0.0075"
+     (same raw-vertices-in-base_link-frame convention their wheel meshes
+     use - see wheel.urdf.xacro's comment on this). -->
+<xacro:property name="caster_x_offset" value="0.1"/>
+<xacro:property name="caster_z_offset" value="0.0075"/>
+
+<xacro:macro name="base" params="prefix">
+  <xacro:unless value="$(arg use_webots)">
+    <link name="${prefix}base_footprint"/>
+    <joint name="${prefix}base_joint" type="fixed">
+      <parent link="${prefix}base_footprint"/>
+      <child link="${prefix}base_link"/>
+      <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+    </joint>
+  </xacro:unless>
+  <link name="${prefix}base_link">
+    <visual>
+        <geometry>
+            <!-- rmp_bot's STLs are raw CAD exports in millimeters (matches
+                 the scale="0.001 0.001 0.001" its own xacro applies) -
+                 required here or the chassis renders 1000x too large. -->
+            <mesh filename="package://amr_description/meshes/chassis.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="green">
+          <color rgba="0 0.7 0 1"/>
+        </material>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+    <collision>
+        <geometry>
+            <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+        </geometry>
+        <origin xyz="${base_x_offset} 0 ${base_z_offset}" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+        <origin xyz="${base_x_offset} 0 ${base_z_offset}" rpy="0 0 0"/>
+        <mass value="${base_mass}"/>
+        <inertia
+            ixx="${(1/12) * base_mass * ((chassis_width * chassis_width) + (chassis_height * chassis_height))}" ixy="0.0" ixz="0.0"
+            iyy="${(1/12) * base_mass * ((chassis_length * chassis_length) + (chassis_height * chassis_height))}" iyz="0.0"
+            izz="${(1/12) * base_mass * ((chassis_length * chassis_length) + (chassis_width * chassis_width))}"/>
+    </inertial>
+  </link>
+  <gazebo reference="${prefix}base_link">
+    <visual>
+        <material>
+            <ambient>0 0.7 0 1</ambient>
+            <diffuse>0 0.7 0 1</diffuse>
+            <specular>0 0.7 0 1</specular>
+        </material>
+    </visual>
+  </gazebo>
+
+  <link name="${prefix}caster_wheel_link">
+    <visual>
+      <origin xyz="${-caster_x_offset} 0 ${-caster_z_offset}" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://amr_description/meshes/caster_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="dark_gray">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <!-- Collision stays a primitive, NOT the scaled mesh used for visual:
+         urdf2webots (this project's R2025a target) prints "BoundingObjects
+         (collisions tags) cannot be scaled in version R2023b and above!"
+         for a scaled mesh boundingObject and falls back to reusing the
+         mesh's UNSCALED (raw millimeter) geometry for collision - a ~1000x
+         oversized collision shape, confirmed by reading the generated
+         proto directly. A cylinder matching the disc's real footprint
+         (40mm diameter, 7.5mm tall) is the correct fix, consistent with
+         how this project already handles collision everywhere else
+         (chassis: mesh visual + box collision; wheels: mesh visual +
+         cylinder collision) - not a new inconsistency. -->
+    <!-- z=-length/2, not 0: the joint's mount point (caster_z_offset) is
+         the disc's TOP surface, not its center (derived from rmp_bot's own
+         mesh - raw vertices span z=[0,0.0075] and the joint sits at the
+         mesh's top edge). A cylinder centered at the link's own origin
+         would float with its bottom 3.75mm above the ground; shifting down
+         by half the height puts the bottom exactly at ground level,
+         matching the real mesh's [0, 0.0075] span. -->
+    <collision>
+      <origin xyz="0 0 -0.00375" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.0075"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="${caster_mass}"/>
+      <inertia
+        ixx="${caster_ixx}" ixy="0.0" ixz="0.0"
+        iyy="${caster_iyy}" iyz="0.0"
+        izz="${caster_izz}"/>
+    </inertial>
+  </link>
+
+  <!-- Fixed, not a real swivel joint - the caster contributes no drive DOF
+       either way, and a fixed joint + near-zero friction contactMaterial
+       (see fix_proto.py/simulation.wbt's "caster_material") is the simplest
+       model that lets it slide freely as the diff-drive wheels steer. -->
+  <joint name="${prefix}caster_wheel_joint" type="fixed">
+    <parent link="${prefix}base_link"/>
+    <child link="${prefix}caster_wheel_link"/>
+    <origin xyz="${caster_x_offset} 0 ${caster_z_offset}" rpy="0 0 0"/>
+  </joint>
+  <!-- mu1/mu2 here are the Gazebo-path equivalent of the Webots
+       "caster_material" ContactProperties (simulation.wbt) - harmless
+       no-op under Webots, kept for RViz/Gazebo portability consistent with
+       how wheel.urdf.xacro's <gazebo> friction tags are handled. -->
+  <gazebo reference="${prefix}caster_wheel_link">
+    <mu1>0.001</mu1>
+    <mu2>0.001</mu2>
+  </gazebo>
+</xacro:macro>
+</robot>

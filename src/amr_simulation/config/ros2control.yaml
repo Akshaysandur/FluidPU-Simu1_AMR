@@ -1,0 +1,49 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 50
+
+    diffdrive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+diffdrive_controller:
+  ros__parameters:
+    left_wheel_names: ["left wheel motor"]
+    right_wheel_names: ["right wheel motor"]
+
+    wheel_separation: 0.16
+    wheel_radius: 0.033
+
+    # The real separation between wheels is not resulting in a perfect odometry
+    wheel_separation_multiplier: 1.112
+
+    use_stamped_vel: false
+    base_frame_id: "base_link"
+
+    # NOTE (Station-1 run): enable_odom_tf is now TRUE - wheel odometry is the
+    # odom->base_link authority. rf2o was mirrored (Webots /scan has a negative
+    # angle_increment, rf2o assumes positive), which made AMCL diverge; live
+    # ground-truth comparison showed wheel odom within ~3cm. Older note follows.
+    # Copied from webots_ros2_turtlebot's own resource/ros2control.yml
+    # (installed package, no launch argument to override this path from
+    # outside), with one deliberate change: enable_odom_tf: false.
+    # rf2o_laser_odometry is now this project's sole odom->base_link TF
+    # broadcaster (see amr_navigation/launch/navigation.launch.py) - with
+    # this left at its compiled default (true, confirmed via
+    # diff_drive_controller_parameters.hpp), diffdrive_controller would
+    # race rf2o to publish the same transform. Wheel odometry is still
+    # published as a plain topic (remapped to /odom by robot_launch.py's
+    # own driver remappings) - only the TF broadcast is disabled.
+    enable_odom_tf: true
+
+    linear:
+      x:
+        max_velocity: 0.2 # Maximal speed of turtlebot
+
+joint_state_broadcaster:
+  ros__parameters:
+    extra_joints:
+      - LDS-01_secondary_motor
+      - LDS-01_main_motor

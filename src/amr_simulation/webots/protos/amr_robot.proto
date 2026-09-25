@@ -1,0 +1,298 @@
+#VRML_SIM R2025a utf8
+# license: Apache License 2.0
+# license url: http://www.apache.org/licenses/LICENSE-2.0
+# This is a proto file for Webots for the amr_robot
+# Extracted from: /home/ironvolk/ros/amr_flat.urdf
+
+PROTO amr_robot [
+  field  SFVec3f     translation     0 0 0
+  field  SFRotation  rotation        0 0 1 0
+  field  SFString    name            "amr_robot"  # Is `Robot.name`.
+  field  SFString    controller      "void"       # Is `Robot.controller`.
+  field  MFString    controllerArgs  []           # Is `Robot.controllerArgs`.
+  field  SFString    customData      ""           # Is `Robot.customData`.
+  field  SFBool      supervisor      FALSE        # Is `Robot.supervisor`.
+  field  SFBool      synchronization TRUE         # Is `Robot.synchronization`.
+  field  SFBool      selfCollision   FALSE        # Is `Robot.selfCollision`.
+]
+{
+  Robot {
+    translation IS translation
+    rotation IS rotation
+    controller IS controller
+    controllerArgs IS controllerArgs
+    customData IS customData
+    supervisor IS supervisor
+    synchronization IS synchronization
+    selfCollision IS selfCollision
+    children [
+      Transform {
+        scale 0.001000 0.001000 0.001000
+        children [
+          Shape {
+            appearance DEF green PBRAppearance {
+              baseColor 0.000000 0.700000 0.000000
+              roughness 1.000000
+              metalness 0
+            }
+            geometry DEF chassis Mesh {
+              url "meshes/chassis.stl"
+            }
+          }
+        ]
+      }
+      Solid {
+        translation 0.100000 0.000000 0.007500
+        children [
+          Transform {
+            translation -0.100000 0.000000 -0.007500
+            scale 0.001000 0.001000 0.001000
+            children [
+              Shape {
+                appearance DEF dark_gray PBRAppearance {
+                  baseColor 0.200000 0.200000 0.200000
+                  roughness 1.000000
+                  metalness 0
+                }
+                geometry DEF caster_1 Mesh {
+                  url "meshes/caster_1.stl"
+                }
+              }
+            ]
+          }
+        ]
+        name "caster_wheel_link"
+        boundingObject Pose {
+          translation 0.000000 0.000000 -0.003750
+          children [
+            Cylinder {
+              radius 0.02
+              height 0.0075
+            }
+          ]
+        }
+        contactMaterial "caster_material"
+      }
+      HingeJoint {
+        jointParameters HingeJointParameters {
+          axis 0.000000 1.000000 0.000000
+          anchor -0.050000 0.085000 0.032500
+          dampingConstant 0.01
+          staticFriction 0.01
+        }
+        device [
+          RotationalMotor {
+            name "left_wheel_joint"
+            maxVelocity 15.0
+            maxTorque 30.0
+          }
+          PositionSensor {
+            name "left_wheel_sensor"
+          }
+        ]
+        endPoint Solid {
+          translation -0.050000 0.085000 0.032500
+          children [
+            Transform {
+              translation 0.050000 -0.085000 -0.032500
+              scale 0.001000 0.001000 0.001000
+              children [
+                Shape {
+                  appearance USE dark_gray
+                  geometry DEF left_wheel Mesh {
+                    url "meshes/left_wheel.stl"
+                  }
+                }
+              ]
+            }
+          ]
+          name "left_wheel_link"
+          boundingObject Pose {
+            rotation 1.000000 0.000000 0.000000 1.570800
+            children [
+              Cylinder {
+                radius 0.0325
+                height 0.025
+              }
+            ]
+          }
+          contactMaterial "wheel_material"
+          physics Physics {
+            density -1
+            mass 0.118200
+            centerOfMass [ 0.000000 0.000000 0.000000 ]
+            inertiaMatrix [
+              3.736844e-05 6.242438e-05 3.736844e-05
+              0.000000e+00 0.000000e+00 0.000000e+00
+            ]
+          }
+        }
+      }
+      HingeJoint {
+        jointParameters HingeJointParameters {
+          axis 0.000000 1.000000 0.000000
+          anchor -0.050000 -0.085000 0.032500
+          dampingConstant 0.01
+          staticFriction 0.01
+        }
+        device [
+          RotationalMotor {
+            name "right_wheel_joint"
+            maxVelocity 15.0
+            maxTorque 30.0
+          }
+          PositionSensor {
+            name "right_wheel_sensor"
+          }
+        ]
+        endPoint Solid {
+          translation -0.050000 -0.085000 0.032500
+          children [
+            Transform {
+              translation 0.050000 0.085000 -0.032500
+              scale 0.001000 0.001000 0.001000
+              children [
+                Shape {
+                  appearance USE dark_gray
+                  geometry DEF right_wheel Mesh {
+                    url "meshes/right_wheel.stl"
+                  }
+                }
+              ]
+            }
+          ]
+          name "right_wheel_link"
+          boundingObject Pose {
+            rotation 1.000000 0.000000 0.000000 1.570800
+            children [
+              Cylinder {
+                radius 0.0325
+                height 0.025
+              }
+            ]
+          }
+          contactMaterial "wheel_material"
+          physics Physics {
+            density -1
+            mass 0.118200
+            centerOfMass [ 0.000000 0.000000 0.000000 ]
+            inertiaMatrix [
+              3.736844e-05 6.242438e-05 3.736844e-05
+              0.000000e+00 0.000000e+00 0.000000e+00
+            ]
+          }
+        }
+      }
+      Solid {
+        translation 0.105000 0.000000 0.050000
+        children [
+          Pose {
+            rotation 0.577350 0.577350 0.577350 2.094395
+            children [
+              Shape {
+                appearance DEF aluminum PBRAppearance {
+                  baseColor 0.500000 0.500000 0.500000
+                  roughness 1.000000
+                  metalness 0
+                }
+                geometry DEF camera Mesh {
+                  url "meshes/camera.stl"
+                }
+              }
+            ]
+          }
+          Camera {
+            name "camera"
+            width 424
+            height 240
+            fieldOfView 1.5184
+          }
+          RangeFinder {
+            name "range_finder"
+            width 424
+            height 240
+            fieldOfView 1.5184
+            minRange 0.05
+            maxRange 1.5
+          }
+        ]
+        name "cam_1_link"
+      }
+      Solid {
+        translation 0.000000 0.000000 0.150000
+        children [
+          Transform {
+            rotation -1.000000 0.000000 0.000000 1.570796
+            scale 0.001000 0.001000 0.001000
+            children [
+              Shape {
+                appearance DEF rplidar_black PBRAppearance {
+                  baseColor 0.100000 0.100000 0.100000
+                  roughness 1.000000
+                  metalness 0
+                }
+                geometry DEF lidar Mesh {
+                  url "meshes/lidar.stl"
+                }
+              }
+            ]
+          }
+          Lidar {
+            translation 0 0 0.03
+            name "Lidar"
+            type "rotating"
+            horizontalResolution 360
+            numberOfLayers 1
+            fieldOfView 6.28318
+            minRange 0.05
+            maxRange 12.0
+          }
+        ]
+        name "laser_frame"
+      }
+      Solid {
+        translation 0.000000 0.000000 0.006000
+        children [
+          Shape {
+            appearance DEF imu_black PBRAppearance {
+              baseColor 0.100000 0.100000 0.100000
+              roughness 1.000000
+              metalness 0
+            }
+            geometry Box {
+               size 0.038990 0.037850 0.013380
+            }
+          }
+          InertialUnit {
+            name "IMU"
+          }
+          Accelerometer {
+            name "accelerometer"
+          }
+          Gyro {
+            name "gyroscope"
+          }
+        ]
+        name "imu_link"
+      }
+    ]
+    name IS name
+    boundingObject Pose {
+      translation 0.000000 0.000000 0.055000
+      children [
+        Box {
+           size 0.200000 0.170000 0.110000
+        }
+      ]
+    }
+    physics Physics {
+      density -1
+      mass 7.210000
+      centerOfMass [ 0.000000 0.000000 0.055000 ]
+      inertiaMatrix [
+        2.463417e-02 3.130342e-02 4.139742e-02
+        0.000000e+00 0.000000e+00 0.000000e+00
+      ]
+    }
+  }
+}

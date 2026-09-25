@@ -1,0 +1,38 @@
+rf2o_laser_odometry:
+  ros__parameters:
+    use_sim_time: true              # REQUIRED: sync to Webots clock; prevents laser_frame TF timestamp drops
+    laser_scan_topic: "/scan"
+    odom_topic: "/odom_rf2o"        # renamed from /rf2o/odom - bt_navigator's odom_topic updated to match
+    publish_tf: true                # CRITICAL: RF2O will now publish odom -> base_link directly!
+    # base_frame_id is deliberately left as "base_link", NOT "base_footprint"
+    # as requested: base_footprint is compiled out of this URDF entirely
+    # under use_webots:=true (see architecture.md's frame-split section) -
+    # it does not exist anywhere in this simulation's TF tree. Pointing
+    # RF2O at it would make every scan->base_footprint transform lookup
+    # fail, breaking odom publishing (and the odom->base_link TF, since
+    # publish_tf is on) outright rather than tuning anything.
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    # laser_frame_id removed: not a real rf2o_laser_odometry parameter -
+    # confirmed against CLaserOdometry2DNode's full declare_parameter<>()
+    # list in the constructor (laser_scan_topic/odom_topic/base_frame_id/
+    # odom_frame_id/publish_tf/init_pose_from_topic/freq - nothing else).
+    # The laser frame actually used comes straight from each incoming
+    # LaserScan's own header.frame_id (setLaserPoseFromTf() looks up
+    # base_frame_id -> last_scan.header.frame_id via TF); this key was a
+    # silent no-op the whole time.
+    #
+    # RF2O's own process() timer runs at `freq` and logs "Waiting for
+    # laser_scans...." (WARN) on every tick that finds no new scan since the
+    # last one - confirmed in CLaserOdometry2DNode.cpp. The 7.0 this used to
+    # be set to assumed a ~7.7Hz scan rate carried over from this project's
+    # pre-TurtleBot3 LiDAR; TurtleBot3's simulated LDS-01 under Webots was
+    # directly measured via `ros2 topic hz /scan` at a rock-solid 4.45Hz
+    # (std dev ~0.005 over a 50-sample window) - polling faster than that
+    # guarantees spurious warnings on every extra tick between real scans.
+    # RF2O was NOT actually stuck the whole time this was set too high -
+    # /odom_rf2o was independently confirmed still publishing at ~4.4Hz via
+    # `ros2 topic hz /odom_rf2o` even while this warning spammed - it's a
+    # log-noise bug, not a functional one. Set at/below the real scan rate.
+    freq: 4.0
+    init_pose_from_topic: ""        # Disable ground truth pose dependency so initial pose initializes to 0 on boot

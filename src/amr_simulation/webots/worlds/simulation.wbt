@@ -1,0 +1,681 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/robotis/turtlebot/protos/TurtleBot3Burger.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/devices/robotis/protos/RobotisLds01.proto"
+
+WorldInfo {
+  basicTimeStep 20
+  contactProperties [
+    ContactProperties {
+      material1 "rubber"
+      coulombFriction [
+        2.5
+      ]
+    }
+    # wheel_material: plain differential-drive wheel, both left/right share
+    # this one material - no frictionRotation split needed since these are
+    # ordinary single-axis rolling wheels, not angled mecanum rollers.
+    # coulombFriction matches wheel.urdf.xacro's Gazebo-path mu1/mu2 (0.8)
+    # for parity between the two friction declarations.
+    ContactProperties {
+      material1 "wheel_material"
+      material2 "default"
+      coulombFriction [
+        0.8
+      ]
+      softCFM 0.00001
+      softERP 0.8
+    }
+    # caster_material: near-zero friction per the task's directive
+    # (mu1=mu2=0.001) - the caster is a fixed (non-swiveling) joint, so low
+    # friction is what lets it slide freely as the diff-drive wheels steer,
+    # standing in for a real caster's free-swivel DOF.
+    ContactProperties {
+      material1 "caster_material"
+      material2 "default"
+      coulombFriction [
+        0.001
+      ]
+      softCFM 0.00001
+      softERP 0.8
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.1268185563323148 -0.10711006661573334 0.9861259997583274 4.53055055024891
+  position -0.6046319734145057 0.7792583251916774 0.5920566261045647
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+Solid {
+  translation 0.01 0 0
+  children [
+    Group {
+      children [
+        Solid {
+          translation -0.63 1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS2.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag2"
+        }
+        Solid {
+          translation -1.19 1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS22.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag22"
+        }
+        Solid {
+          translation -1.17 -1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS1.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag1"
+        }
+        Solid {
+          translation -0.64 -1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS12.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag12"
+        }
+        Solid {
+          translation 0.33 1.16 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS3.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag3"
+        }
+        Solid {
+          translation -0.16 1.16 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS32.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag32"
+        }
+        Solid {
+          translation 0.09 0.66 0.26
+          children [
+            DEF w10 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.13 0.12 0.45
+              }
+            }
+          ]
+          name "wall10(2)"
+          boundingObject USE w10
+        }
+        Solid {
+          translation -0.92 0.69 0.27
+          children [
+            DEF w10 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.1 0.15 0.45
+              }
+            }
+          ]
+          name "wall10(1)"
+          boundingObject USE w10
+        }
+        Solid {
+          translation -0.94 -0.66 0.27
+          children [
+            DEF w10 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.1 0.12 0.45
+              }
+            }
+          ]
+          name "wall10"
+          boundingObject USE w10
+        }
+        Solid {
+          translation 1.145 -1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.55 0.45
+              }
+            }
+          ]
+          name "wall9(4)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.104999 -1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.55 0.45
+              }
+            }
+          ]
+          name "wall9(3)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.934999 -1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.96 0.45
+              }
+            }
+          ]
+          name "wall9(2)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.905 1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 1.01 0.45
+              }
+            }
+          ]
+          name "wall9(1)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation 0.095 1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.838 0.45
+              }
+            }
+          ]
+          name "wall9"
+          boundingObject USE w8
+        }
+        Solid {
+          translation 0.53 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(4)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.34 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(3)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.38 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(2)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -1.43 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(1)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.44 -0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -1.43 -0.9 0.27
+          children [
+            DEF w7 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall7"
+          boundingObject USE w7
+        }
+        Solid {
+          translation -0.4 -0.9 0.26
+          children [
+            DEF w6 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall6"
+          boundingObject USE w6
+        }
+        Solid {
+          translation 1.44 -0.9 0.26
+          children [
+            DEF w5 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall5"
+          boundingObject USE w5
+        }
+        Solid {
+          translation 0 1.301 0.21
+          children [
+            DEF w2 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 3 0.1 0.5
+              }
+            }
+          ]
+          name "wall2"
+          boundingObject USE w2
+        }
+        Solid {
+          translation -1.54 -0.001 0.21
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w3 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 2.7 0.1 0.5
+              }
+            }
+          ]
+          name "wall3"
+          boundingObject USE w3
+        }
+        Solid {
+          translation 1.54 -0.011 0.21
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w4 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 2.7 0.1 0.5
+              }
+            }
+          ]
+          name "wall4"
+          boundingObject USE w4
+        }
+        Solid {
+          translation 0 -1.301 0.21
+          children [
+            DEF w1 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 3 0.1 0.5
+              }
+            }
+          ]
+          name "wall1"
+          boundingObject USE w1
+        }
+      ]
+    }
+    DEF floor Shape {
+      appearance Appearance {
+        material Material {
+        }
+        texture ImageTexture {
+          url [
+            "layout.png"
+          ]
+        }
+      }
+      geometry Box {
+        size 3 2.5 0.08
+      }
+    }
+  ]
+  name "Env"
+  boundingObject USE floor
+}
+# TurtleBot3Burger node fields (extensionSlot contents especially) copied
+# verbatim from webots_ros2_turtlebot's own reference world
+# (turtlebot3_burger_example.wbt) - the RobotisLds01 extensionSlot in
+# particular is what makes /scan exist at all; turtlebot_webots.urdf's
+# device bindings expect exactly this sensor set with these exact names.
+# Position/heading kept from this project's previous robot spawn point.
+TurtleBot3Burger {
+  translation 1.270281734201219 0.37999999073660834 0
+  rotation 0.002167225822822243 -6.837749153410628e-08 0.9999976515633565 3.1415899996885583
+  controller "<extern>"
+  controllerArgs [
+    ""
+  ]
+  extensionSlot [
+    Solid {
+      name "imu_link"
+    }
+    GPS {
+    }
+    InertialUnit {
+      name "inertial_unit"
+    }
+    RobotisLds01 {
+    }
+    # Four short-range ultrasonic-style sensors, added to cover the LDS-01
+    # lidar's own minimum-range blind spot right against the robot's own
+    # body (its real minimum reliable range is well above the few cm this
+    # layout's narrowest passages leave for error margin - see
+    # decisions-and-gotchas.md's "Ultrasonic proximity sensors" entry for
+    # the full reasoning and verification trail).
+    #
+    # DistanceSensor is a real, built-in Webots node (fields confirmed
+    # against /usr/local/webots/resources/nodes/DistanceSensor.wrl on this
+    # machine's own Webots R2025a install - translation/rotation/name/
+    # lookupTable/type/numberOfRays/aperture are all real fields, not
+    # guessed). type "sonar" + numberOfRays > 1 makes Webots model a cone
+    # of rays and report the closest hit, approximating a real ultrasonic
+    # sensor's beam spread rather than a single laser-like ray.
+    #
+    # webots_ros2_driver auto-instantiates a Ros2DistanceSensor plugin for
+    # EVERY WB_NODE_DISTANCE_SENSOR device it finds on the robot (confirmed
+    # via WebotsNode.cpp's device-type switch) - no <device> tag is
+    # strictly required for this to work at all, but this project forks
+    # turtlebot_webots.urdf (see amr_simulation/resource/) to give each one
+    # an explicit, predictable topic name instead of the plugin's default
+    # "~/<device_name>" (which would resolve under the driver node's own
+    # name, not a clean absolute path nav2_params.yaml could reference).
+    #
+    # lookupTable [measured_m, returned_m, noise_stddev] triplets: linear
+    # 0.01m-0.08m passthrough with small noise. Deliberately a real
+    # few-centimeter range, not LIDAR-scale - this sensor exists ONLY to
+    # cover LIDAR's own blind spot right at the hull, and must stay
+    # irrelevant everywhere else so it never overrides LIDAR-based
+    # planning in open space. min/max_range in the published
+    # sensor_msgs/Range will land close to but slightly inside 0.01/0.08
+    # (Ros2DistanceSensor.cpp derives them as the table's endpoints
+    # adjusted by that noise margin).
+    #
+    # radiation_type will publish as INFRARED, not ULTRASOUND: confirmed
+    # via reading Ros2DistanceSensor.cpp directly - it hardcodes
+    # `sensor_msgs::msg::Range::INFRARED` regardless of this node's own
+    # `type` field. Cosmetic only - nav2_costmap_2d::RangeSensorLayer (see
+    # nav2_params.yaml's local_costmap.range_layer) doesn't read
+    # radiation_type at all, so this doesn't affect function, only what a
+    # message inspector would print.
+    #
+    # Mounted flush with the robot's 0.1m hull radius (matching
+    # robot_radius everywhere else in this project) at the front/left/
+    # back/right compass points - TurtleBot3 Burger's chassis is circular,
+    # not the "four corners" of a rectangular chassis, so this is the
+    # closest real equivalent. z=0.08 is an approximate mid-body mounting
+    # height, not derived from a chassis spec sheet - adjust here if it
+    # looks visually off against the real model in Webots. Four sensors
+    # 90 degrees apart leaves real blind spots at the diagonals (45/135/
+    # 225/315 degrees) with no direct coverage; this is an honest coverage
+    # gap, not something the sensor count/placement chosen here closes.
+    # !! FRAME GOTCHA - READ BEFORE EDITING THESE TRANSLATIONS !!
+    # extensionSlot's origin is NOT the robot origin. It sits at
+    # (-0.03, 0, 0.153) in base_link - which is exactly why RobotisLds01
+    # above needs no translation of its own: that IS the lidar mount point.
+    # Every translation in this list is therefore slot-relative, and the
+    # published TF you see in RViz is (slot origin + the value written here).
+    #
+    # This was live-diagnosed the hard way: these were first written as
+    # 0.1 0 0.08 / 0 0.1 0.08 / etc, intending "0.10m out from centre at
+    # mid-body height". `ros2 run tf2_ros tf2_echo base_link sonar_front`
+    # actually reported (0.070, 0, 0.233) - 3cm too far back and 15cm too
+    # high (the visible "rays are floating way above the robot" symptom).
+    # Worse, it put the FRONT sensor's own max-range return at only 0.1498m
+    # from base_link, permanently inside collision_monitor's 0.16m
+    # CollisionSlow ring - so the robot drove every goal in a constant 60%
+    # slowdown that toggled on and off with sensor noise (58 toggles in 60s,
+    # measured off /rosout).
+    #
+    # Values below are back-solved as (desired base_link pose - slot origin)
+    # to put all four at exactly 0.10m from centre, z=0.08 (mid-body, above
+    # the 0.066m wheel tops, below the 0.153m lidar deck). Verify any change
+    # with tf2_echo against base_link - never assume this frame is the robot's.
+    DistanceSensor {
+      translation 0.13 0 -0.073
+      rotation 0 0 1 0
+      name "sonar_front"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation 0.03 0.1 -0.073
+      rotation 0 0 1 1.5708
+      name "sonar_left"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation -0.07 0 -0.073
+      rotation 0 0 1 3.14159
+      name "sonar_back"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation 0.03 -0.1 -0.073
+      rotation 0 0 1 -1.5708
+      name "sonar_right"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+  ]
+}
