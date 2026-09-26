@@ -176,3 +176,6 @@ Known-open items — check these before assuming they're fixed:
   under full Webots+RViz+stack load, aborting the ENTIRE bringup (not just
   that one node) even though the node itself was fine. See decisions-and-
   gotchas.md before lowering this back down.
+
+
+Latest: see `decisions-and-gotchas.md` -> "Full multi-station mission (2026-09-26)" for the station routes, `/fms/*` services and the boot/stop scripts in `tools/`.

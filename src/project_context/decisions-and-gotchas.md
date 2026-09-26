@@ -1546,3 +1546,55 @@ APPROACH model (direction-aware) so recovery can back away from a wall.
 **Station run** (`scripts/fleet_manager.py`, service `/fms/station_1`): approach point -> node 18 -> node 10 ->
 node 17 -> exit-clear point (0.35 m beyond the mouth, direction derived from the LIF nodes), so the robot
 actually leaves the station.
+
+---
+
+## Full multi-station mission (2026-09-26) — stations 1-4 + return home
+
+One continuous run, verified from a fresh simulation restart: Station 1 -> Station 2 -> Station 3 ->
+unloading/loading bay -> back to the start pose, every waypoint reached on the first attempt
+(errors 0.05-0.08 m, no retries). Wall clearance was measured only for Station 1 (2-4 cm); it was not
+re-measured for the later stations.
+
+### Routes (LIF node ids; map = (1.51 - lif_x, 1.25 - lif_y))
+
+| Service | Nodes (visit order) | Physical meaning |
+|---|---|---|
+| `/fms/station_1` | 18 -> 10 -> 17 | top-middle station: enter (right), inside, exit (left) |
+| `/fms/station_2` | 14 -> 12 -> 13 | top-left station: enter (right), inside, exit (left) |
+| `/fms/station_3` | 16 -> 11 -> 15 | bottom-left station: enter (left), inside, exit (right) |
+| `/fms/station_4` | 21 -> 9 -> 20 -> 8 -> 19 | bottom bay: unloading entry, inside, middle (20), loading (8), exit to lane (19) |
+| `/fms/full_mission` | station_1..4, then home (1.27, 0.38) | whole run in one go |
+
+Station 4 was matched to the graph from a hand-drawn route on a screenshot (by position), not from LIF
+station names; check the mapping if the unloading/loading naming matters.
+Home = robot spawn pose = AMCL initial pose, just below the orange start box. Only position is checked at
+home, not heading.
+
+### How the sequencer builds a route (`scripts/fleet_manager.py`)
+- 3-node station: approach point (0.30 m in front of the entry, direction = inside node -> mouth midpoint),
+  the 3 nodes, then an exit-clear point 0.35 m beyond the exit.
+- Routes with more than 3 nodes: approach straight back along the first leg, exit-clear straight on along
+  the last leg.
+- Each waypoint is a Nav2 NavigateToPose goal and counts as reached only if Nav2 reports SUCCEEDED AND
+  map->base_link is within tolerance (0.10 nodes, 0.15 staging). Up to 5 retries, never skips a waypoint.
+- Adding a station: add its name to `station_names` and a `<name>_nodes` list in
+  `config/fleet_manager.yaml` (parameters are declared dynamically); add it to `mission_stations` to
+  include it in the full mission.
+
+### Running it
+- `tools/boot_sim.sh` — restart everything and run Station 1 once ("boot up").
+- `tools/boot_mission.sh` — restart everything and run the full mission.
+- `tools/stop_sim.sh` — stop all simulation/Nav2/fleet processes.
+- `tools/env.sh` — Cyclone DDS loopback + sourcing order (underlay, then this workspace, so the patched
+  tf2_ros is used). Scripts use absolute paths under /home/akshay/rosws; logs go to /tmp/amr_logs.
+- With Nav2 already running: `ros2 service call /fms/full_mission std_srvs/srv/Trigger`; watch
+  `/fms/status`.
+
+### Gotchas
+- Never use `pkill -f <pattern>` from a script/shell that matches its own command line; use the ps/awk
+  approach in `tools/stop_sim.sh`.
+- RViz fails to open (`Invalid parentWindowHandle`) when launched from a shell without a usable X
+  session; it is not needed for the run.
+- Not done: RF2O -> EKF odometry chain (wheel odometry is used), tests with movable/dynamic obstacles,
+  wall-clearance measurement on stations 2-4.

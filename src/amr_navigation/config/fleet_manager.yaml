@@ -15,8 +15,15 @@ fleet_manager:
     lif_scale_y: -1.0
     lif_offset_x: 1.51
     lif_offset_y: 1.25
-    station_names: ["station_1"]
+    station_names: ["station_1", "station_2", "station_3", "station_4"]
     # Graph node ids in visit order: enter, inside, exit.
     # Physical Webots 'Station 1' = LIF 'Station3'. 18 = "113_56", 10 = "141_29", 17 = "167_56" in the graph editor.
     # Swap 18 <-> 17 if the station is entered from the other side.
     station_1_nodes: [18, 10, 17]
+    # Station 2 = top-left station (map x -1.55..-0.42): 14 = entry (right side), 12 = inside, 13 = exit (left side).
+    station_2_nodes: [14, 12, 13]
+    # Station 3 = bottom-left station: 16 = entry (left side), 11 = inside, 15 = exit (right side).
+    station_3_nodes: [16, 11, 15]
+    # Bottom-middle bay -> loading side (5-node route): 21 = unloading entry, 9 = inside, 20 = middle (red dot),
+    # 8 = loading station, 19 = exit to the lane.
+    station_4_nodes: [21, 9, 20, 8, 19]

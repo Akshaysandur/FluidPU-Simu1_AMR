@@ -50,6 +50,9 @@ class FleetManager(Node):
         self.declare_parameter('lif_offset_y', 0.0)
         self.declare_parameter('station_names', ['station_1'])
         self.declare_parameter('station_1_nodes', [18, 10, 17])
+        for n in self.get_parameter('station_names').value:
+            if n != 'station_1':
+                self.declare_parameter(f'{n}_nodes', [0])
 
         with open(self.get_parameter('graph_file').value) as f:
             feats = json.load(f)['features']
@@ -88,6 +91,12 @@ class FleetManager(Node):
         for n in self.stations:
             self.create_service(Trigger, f'/fms/{n}', lambda req, res, n=n: self._on_service(n, res),
                                 callback_group=cb)
+        self.declare_parameter('mission_stations', ['station_1', 'station_2', 'station_3', 'station_4'])
+        self.declare_parameter('home_xy', [1.27, 0.38])
+        self.mission_stations = list(self.get_parameter('mission_stations').value)
+        self.home = tuple(self.get_parameter('home_xy').value)
+        self.create_service(Trigger, '/fms/full_mission', lambda req, res: self._on_service('full_mission', res),
+                            callback_group=cb)
         self._busy = threading.Lock()
         self.get_logger().info(f'FMS ready. stations={self.stations}')
 
@@ -101,7 +110,7 @@ class FleetManager(Node):
         self.get_logger().info(text)
 
     def _start(self, name):
-        if name not in self.stations:
+        if name not in self.stations and name != 'full_mission':
             return False, f'unknown station "{name}"'
         if not self._busy.acquire(blocking=False):
             return False, 'FMS busy with another run'
@@ -128,22 +137,47 @@ class FleetManager(Node):
 
     def _run(self, name):
         try:
+            if name == 'full_mission':
+                self._mission()
+            else:
+                self._run_station(name)
+        finally:
+            self._busy.release()
+
+    def _mission(self):
+        """Every station in order, then back to the start (home) pose - one continuous run."""
+        for st in self.mission_stations:
+            if not self._run_station(st):
+                self._status(f'full_mission: FAILED during {st}')
+                return
+        hx, hy = self.home
+        if not self._go('full_mission', 1, 1, 'home', hx, hy, math.pi, self.staging_tol):
+            self._status('full_mission: FAILED returning home')
+            return
+        self._status(f'full_mission: COMPLETE ({len(self.mission_stations)} stations + home, robot is back at the start)')
+
+    def _run_station(self, name):
+        if True:
             ids = self.stations[name]
             if not self.nav.wait_for_server(timeout_sec=10.0):
                 self._status(f'{name}: FAILED navigate_to_pose server unavailable')
-                return
+                return False
             pts = [self.nodes[i] for i in ids]
             labels = [f'node {i}' for i in ids]
             tols = [self.tol] * len(pts)
             if len(pts) >= 3:
-                # "Out" of the station = from the inside node towards the middle of the mouth
-                # (mean of entry and exit). Derived from the LIF nodes, not hard-coded.
-                mx, my = (pts[0][0] + pts[-1][0]) / 2, (pts[0][1] + pts[-1][1]) / 2
-                ox_, oy_ = mx - pts[1][0], my - pts[1][1]
-                n_ = math.hypot(ox_, oy_) or 1.0
-                ox_, oy_ = ox_ / n_, oy_ / n_
-                pts = ([(pts[0][0] + ox_ * self.approach_dist, pts[0][1] + oy_ * self.approach_dist)] + pts
-                       + [(pts[-1][0] + ox_ * self.exit_dist, pts[-1][1] + oy_ * self.exit_dist)])
+                if len(pts) == 3:
+                    # "Out" of the station = from the inside node towards the middle of the mouth
+                    # (mean of entry and exit). Derived from the LIF nodes, not hard-coded.
+                    mx, my = (pts[0][0] + pts[-1][0]) / 2, (pts[0][1] + pts[-1][1]) / 2
+                    ain = aout = (mx - pts[1][0], my - pts[1][1])
+                else:
+                    # Longer routes: stage straight back along the first leg and straight on along the last leg.
+                    ain = (pts[0][0] - pts[1][0], pts[0][1] - pts[1][1])
+                    aout = (pts[-1][0] - pts[-2][0], pts[-1][1] - pts[-2][1])
+                nin, nout = math.hypot(*ain) or 1.0, math.hypot(*aout) or 1.0
+                pts = ([(pts[0][0] + ain[0] / nin * self.approach_dist, pts[0][1] + ain[1] / nin * self.approach_dist)] + pts
+                       + [(pts[-1][0] + aout[0] / nout * self.exit_dist, pts[-1][1] + aout[1] / nout * self.exit_dist)])
                 labels = ['approach'] + labels + ['exit-clear']
                 tols = [self.staging_tol] + tols + [self.staging_tol]
             start = self._robot_xy() or pts[0]
@@ -154,10 +188,9 @@ class FleetManager(Node):
             for k, (lab, (x, y)) in enumerate(zip(labels, pts)):
                 if not self._go(name, k + 1, len(pts), lab, x, y, yaws[k], tols[k]):
                     self._status(f'{name}: FAILED at waypoint {k + 1}/{len(pts)} ({lab})')
-                    return
+                    return False
             self._status(f'{name}: COMPLETE ({len(pts)}/{len(pts)} waypoints, robot is out of the station)')
-        finally:
-            self._busy.release()
+            return True
 
     def _go(self, name, k, n, node_id, x, y, yaw, tol):
         for attempt in range(1, self.max_retries + 1):
