@@ -1,0 +1,16 @@
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <!-- Dev machine's LAN interface (see `ip -4 addr`). Change if it moves to a different network. -->
+      <NetworkInterfaceAddress>wlp2s0</NetworkInterfaceAddress>
+      <AllowMulticast>true</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <!-- Explicit peer as a multicast fallback (some WiFi APs block multicast between clients).
+           Set to the Raspberry Pi's actual IP - find it with `hostname -I` on the Pi. -->
+      <Peers><Peer address="PI_IP_HERE"/></Peers>  <!-- replace PI_IP_HERE with the Pi's real IP -->
+    </Discovery>
+  </Domain>
+</CycloneDDS>

@@ -17,6 +17,7 @@ install(
     scripts/maneuver_telemetry_node.py
     scripts/calibrate_inflation.py
     scripts/fleet_manager.py
+    scripts/fleet_manager_multi.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

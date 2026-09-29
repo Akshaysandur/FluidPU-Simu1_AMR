@@ -1,0 +1,29 @@
+# Three-AMR fleet, read by sim_multi / navigation_multi / fleet_control_multi.
+# Spawn poses MUST match amr_simulation/webots/worlds/simulation_multi.wbt (map frame == Webots world frame).
+# The nodes, stations and the four blue spawn/parking points P1..P4 are in fleet_graph.yaml.
+#
+# Mission of every robot (fleet_manager_multi.py):
+#   loading/unloading route -> its own station (3-4 s stop at the centre node) -> loading/unloading route
+#   -> parking point (deepest free one first).  Stations are drawn at random from `task_pool` (one each);
+#   give a robot `tasks: ["station_1"]` to pin it instead.
+# The robots may start on any of P1..P4 (set `spawn` and x/y/yaw to that point; also edit the wbt).
+robots:
+  amr1:
+    spawn: P3                # nearest to the exit of the parking column, so it leaves first
+    x: 1.33
+    y: 0.38
+    yaw: -1.5708
+  amr2:
+    spawn: P2
+    x: 1.33
+    y: 0.72
+    yaw: -1.5708
+  amr3:
+    spawn: P1
+    x: 1.33
+    y: 1.05
+    yaw: -1.5708
+
+task_pool: ["station_1", "station_2", "station_3"]
+# Seconds every robot stands still at the centre node of its own station: uniform random in this range.
+station_dwell: [3.0, 4.0]

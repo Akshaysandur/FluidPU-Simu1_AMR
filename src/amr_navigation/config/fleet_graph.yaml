@@ -1,0 +1,72 @@
+# Node network for the multi-AMR fleet (fleet_manager_multi.py). World/map frame, metres.
+# The red points of the annotated floor picture are the nodes, the blue points are the spawn / parking slots.
+# Robots only ever drive from node to node along the edges below, so every leg is a short straight line.
+nodes:
+  # centre row (east-west highway through the open floor)
+  M1: [-1.159, -0.029]
+  M2: [-0.581, -0.027]
+  M3: [-0.092, -0.048]
+  M4: [0.386, -0.064]
+  M5: [0.751, -0.062]
+  M6: [1.154, -0.078]
+  C:  [0.959, 0.220]            # clears the corner of the wall strip beside the parking column
+  # station 1 (top middle): lane node, room end, middle, room end, lane node
+  S1a: [-0.119, 0.563]
+  S1r1: [-0.173, 0.928]
+  S1m: [0.114, 0.936]
+  S1r2: [0.362, 0.930]
+  S1b: [0.343, 0.523]
+  # station 2 (top left)
+  S2a: [-0.581, 0.547]
+  S2r1: [-0.586, 1.003]
+  S2m: [-0.900, 0.995]
+  S2r2: [-1.214, 0.987]
+  S2b: [-1.178, 0.523]
+  # station 3 (bottom left)
+  S3a: [-0.614, -0.555]
+  S3r1: [-0.597, -0.965]
+  S3m: [-0.911, -0.941]
+  S3r2: [-1.189, -0.962]
+  S3b: [-1.170, -0.542]
+  # loading / unloading bay (bottom right): unloading side (west) ... loading side (east)
+  LUa: [-0.081, -0.504]
+  LU1: [-0.103, -0.906]
+  LU2: [0.449, -0.933]
+  LU3: [1.124, -0.917]
+  LUb: [1.165, -0.520]
+  # parking / spawn points 1..4 (blue), point 1 is the deepest
+  P1: [1.33, 1.05]
+  P2: [1.33, 0.72]
+  P3: [1.33, 0.38]
+  P4: [1.33, -0.15]
+
+edges:
+  - [M1, M2]
+  - [M2, M3]
+  - [M3, M4]
+  - [M4, M5]
+  - [M5, M6]
+  - [M5, C]
+  - [M6, C]
+  - [C, P3]
+  - [P1, P2]
+  - [P2, P3]
+  - [P3, P4]
+  - [P4, M6]
+  - [M1, S2b]
+  - [M2, S2a]
+  - [M3, S1a]
+  - [M4, S1b]
+  - [M1, S3b]
+  - [M2, S3a]
+  - [M3, LUa]
+  - [M6, LUb]
+
+# A station is walked in this order (or the reverse - the end nearer to the robot is used); `dwell` = the middle node.
+stations:
+  station_1: [S1a, S1r1, S1m, S1r2, S1b]
+  station_2: [S2a, S2r1, S2m, S2r2, S2b]
+  station_3: [S3a, S3r1, S3m, S3r2, S3b]
+  station_4: [LUa, LU1, LU2, LU3, LUb]      # loading / unloading, always walked LUa -> LUb, no stop
+
+parking: [P1, P2, P3, P4]           # deepest first

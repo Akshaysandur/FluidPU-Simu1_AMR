@@ -582,6 +582,10 @@ Solid {
   name "Env"
   boundingObject USE floor
 }
+# TWO-ROBOT WORLD (generated from simulation.wbt: identical walls/floor, robot node duplicated).
+# amr1 = the original spawn (start / red-box position); amr2 = 0.40 m beside it (+y).
+# Robot names are the Webots names the extern controllers attach to (--robot-name=amr1/amr2)
+# and the ROS namespaces. Spawn poses MUST match amr_navigation/config/multi_robot.yaml.
 # TurtleBot3Burger node fields (extensionSlot contents especially) copied
 # verbatim from webots_ros2_turtlebot's own reference world
 # (turtlebot3_burger_example.wbt) - the RobotisLds01 extensionSlot in
@@ -589,8 +593,272 @@ Solid {
 # device bindings expect exactly this sensor set with these exact names.
 # Position/heading kept from this project's previous robot spawn point.
 TurtleBot3Burger {
-  translation 1.270281734201219 0.37999999073660834 0
-  rotation 0.002167225822822243 -6.837749153410628e-08 0.9999976515633565 3.1415899996885583
+  name "amr1"
+  translation 1.33 0.38 0
+  rotation 0 0 1 -1.5707963267948966
+  controller "<extern>"
+  controllerArgs [
+    ""
+  ]
+  extensionSlot [
+    Solid {
+      name "imu_link"
+    }
+    GPS {
+    }
+    InertialUnit {
+      name "inertial_unit"
+    }
+    RobotisLds01 {
+    }
+    # Four short-range ultrasonic-style sensors, added to cover the LDS-01
+    # lidar's own minimum-range blind spot right against the robot's own
+    # body (its real minimum reliable range is well above the few cm this
+    # layout's narrowest passages leave for error margin - see
+    # decisions-and-gotchas.md's "Ultrasonic proximity sensors" entry for
+    # the full reasoning and verification trail).
+    #
+    # DistanceSensor is a real, built-in Webots node (fields confirmed
+    # against /usr/local/webots/resources/nodes/DistanceSensor.wrl on this
+    # machine's own Webots R2025a install - translation/rotation/name/
+    # lookupTable/type/numberOfRays/aperture are all real fields, not
+    # guessed). type "sonar" + numberOfRays > 1 makes Webots model a cone
+    # of rays and report the closest hit, approximating a real ultrasonic
+    # sensor's beam spread rather than a single laser-like ray.
+    #
+    # webots_ros2_driver auto-instantiates a Ros2DistanceSensor plugin for
+    # EVERY WB_NODE_DISTANCE_SENSOR device it finds on the robot (confirmed
+    # via WebotsNode.cpp's device-type switch) - no <device> tag is
+    # strictly required for this to work at all, but this project forks
+    # turtlebot_webots.urdf (see amr_simulation/resource/) to give each one
+    # an explicit, predictable topic name instead of the plugin's default
+    # "~/<device_name>" (which would resolve under the driver node's own
+    # name, not a clean absolute path nav2_params.yaml could reference).
+    #
+    # lookupTable [measured_m, returned_m, noise_stddev] triplets: linear
+    # 0.01m-0.08m passthrough with small noise. Deliberately a real
+    # few-centimeter range, not LIDAR-scale - this sensor exists ONLY to
+    # cover LIDAR's own blind spot right at the hull, and must stay
+    # irrelevant everywhere else so it never overrides LIDAR-based
+    # planning in open space. min/max_range in the published
+    # sensor_msgs/Range will land close to but slightly inside 0.01/0.08
+    # (Ros2DistanceSensor.cpp derives them as the table's endpoints
+    # adjusted by that noise margin).
+    #
+    # radiation_type will publish as INFRARED, not ULTRASOUND: confirmed
+    # via reading Ros2DistanceSensor.cpp directly - it hardcodes
+    # `sensor_msgs::msg::Range::INFRARED` regardless of this node's own
+    # `type` field. Cosmetic only - nav2_costmap_2d::RangeSensorLayer (see
+    # nav2_params.yaml's local_costmap.range_layer) doesn't read
+    # radiation_type at all, so this doesn't affect function, only what a
+    # message inspector would print.
+    #
+    # Mounted flush with the robot's 0.1m hull radius (matching
+    # robot_radius everywhere else in this project) at the front/left/
+    # back/right compass points - TurtleBot3 Burger's chassis is circular,
+    # not the "four corners" of a rectangular chassis, so this is the
+    # closest real equivalent. z=0.08 is an approximate mid-body mounting
+    # height, not derived from a chassis spec sheet - adjust here if it
+    # looks visually off against the real model in Webots. Four sensors
+    # 90 degrees apart leaves real blind spots at the diagonals (45/135/
+    # 225/315 degrees) with no direct coverage; this is an honest coverage
+    # gap, not something the sensor count/placement chosen here closes.
+    # !! FRAME GOTCHA - READ BEFORE EDITING THESE TRANSLATIONS !!
+    # extensionSlot's origin is NOT the robot origin. It sits at
+    # (-0.03, 0, 0.153) in base_link - which is exactly why RobotisLds01
+    # above needs no translation of its own: that IS the lidar mount point.
+    # Every translation in this list is therefore slot-relative, and the
+    # published TF you see in RViz is (slot origin + the value written here).
+    #
+    # This was live-diagnosed the hard way: these were first written as
+    # 0.1 0 0.08 / 0 0.1 0.08 / etc, intending "0.10m out from centre at
+    # mid-body height". `ros2 run tf2_ros tf2_echo base_link sonar_front`
+    # actually reported (0.070, 0, 0.233) - 3cm too far back and 15cm too
+    # high (the visible "rays are floating way above the robot" symptom).
+    # Worse, it put the FRONT sensor's own max-range return at only 0.1498m
+    # from base_link, permanently inside collision_monitor's 0.16m
+    # CollisionSlow ring - so the robot drove every goal in a constant 60%
+    # slowdown that toggled on and off with sensor noise (58 toggles in 60s,
+    # measured off /rosout).
+    #
+    # Values below are back-solved as (desired base_link pose - slot origin)
+    # to put all four at exactly 0.10m from centre, z=0.08 (mid-body, above
+    # the 0.066m wheel tops, below the 0.153m lidar deck). Verify any change
+    # with tf2_echo against base_link - never assume this frame is the robot's.
+    DistanceSensor {
+      translation 0.13 0 -0.073
+      rotation 0 0 1 0
+      name "sonar_front"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation 0.03 0.1 -0.073
+      rotation 0 0 1 1.5708
+      name "sonar_left"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation -0.07 0 -0.073
+      rotation 0 0 1 3.14159
+      name "sonar_back"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation 0.03 -0.1 -0.073
+      rotation 0 0 1 -1.5708
+      name "sonar_right"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+  ]
+}
+TurtleBot3Burger {
+  name "amr2"
+  translation 1.33 0.72 0
+  rotation 0 0 1 -1.5707963267948966
+  controller "<extern>"
+  controllerArgs [
+    ""
+  ]
+  extensionSlot [
+    Solid {
+      name "imu_link"
+    }
+    GPS {
+    }
+    InertialUnit {
+      name "inertial_unit"
+    }
+    RobotisLds01 {
+    }
+    # Four short-range ultrasonic-style sensors, added to cover the LDS-01
+    # lidar's own minimum-range blind spot right against the robot's own
+    # body (its real minimum reliable range is well above the few cm this
+    # layout's narrowest passages leave for error margin - see
+    # decisions-and-gotchas.md's "Ultrasonic proximity sensors" entry for
+    # the full reasoning and verification trail).
+    #
+    # DistanceSensor is a real, built-in Webots node (fields confirmed
+    # against /usr/local/webots/resources/nodes/DistanceSensor.wrl on this
+    # machine's own Webots R2025a install - translation/rotation/name/
+    # lookupTable/type/numberOfRays/aperture are all real fields, not
+    # guessed). type "sonar" + numberOfRays > 1 makes Webots model a cone
+    # of rays and report the closest hit, approximating a real ultrasonic
+    # sensor's beam spread rather than a single laser-like ray.
+    #
+    # webots_ros2_driver auto-instantiates a Ros2DistanceSensor plugin for
+    # EVERY WB_NODE_DISTANCE_SENSOR device it finds on the robot (confirmed
+    # via WebotsNode.cpp's device-type switch) - no <device> tag is
+    # strictly required for this to work at all, but this project forks
+    # turtlebot_webots.urdf (see amr_simulation/resource/) to give each one
+    # an explicit, predictable topic name instead of the plugin's default
+    # "~/<device_name>" (which would resolve under the driver node's own
+    # name, not a clean absolute path nav2_params.yaml could reference).
+    #
+    # lookupTable [measured_m, returned_m, noise_stddev] triplets: linear
+    # 0.01m-0.08m passthrough with small noise. Deliberately a real
+    # few-centimeter range, not LIDAR-scale - this sensor exists ONLY to
+    # cover LIDAR's own blind spot right at the hull, and must stay
+    # irrelevant everywhere else so it never overrides LIDAR-based
+    # planning in open space. min/max_range in the published
+    # sensor_msgs/Range will land close to but slightly inside 0.01/0.08
+    # (Ros2DistanceSensor.cpp derives them as the table's endpoints
+    # adjusted by that noise margin).
+    #
+    # radiation_type will publish as INFRARED, not ULTRASOUND: confirmed
+    # via reading Ros2DistanceSensor.cpp directly - it hardcodes
+    # `sensor_msgs::msg::Range::INFRARED` regardless of this node's own
+    # `type` field. Cosmetic only - nav2_costmap_2d::RangeSensorLayer (see
+    # nav2_params.yaml's local_costmap.range_layer) doesn't read
+    # radiation_type at all, so this doesn't affect function, only what a
+    # message inspector would print.
+    #
+    # Mounted flush with the robot's 0.1m hull radius (matching
+    # robot_radius everywhere else in this project) at the front/left/
+    # back/right compass points - TurtleBot3 Burger's chassis is circular,
+    # not the "four corners" of a rectangular chassis, so this is the
+    # closest real equivalent. z=0.08 is an approximate mid-body mounting
+    # height, not derived from a chassis spec sheet - adjust here if it
+    # looks visually off against the real model in Webots. Four sensors
+    # 90 degrees apart leaves real blind spots at the diagonals (45/135/
+    # 225/315 degrees) with no direct coverage; this is an honest coverage
+    # gap, not something the sensor count/placement chosen here closes.
+    # !! FRAME GOTCHA - READ BEFORE EDITING THESE TRANSLATIONS !!
+    # extensionSlot's origin is NOT the robot origin. It sits at
+    # (-0.03, 0, 0.153) in base_link - which is exactly why RobotisLds01
+    # above needs no translation of its own: that IS the lidar mount point.
+    # Every translation in this list is therefore slot-relative, and the
+    # published TF you see in RViz is (slot origin + the value written here).
+    #
+    # This was live-diagnosed the hard way: these were first written as
+    # 0.1 0 0.08 / 0 0.1 0.08 / etc, intending "0.10m out from centre at
+    # mid-body height". `ros2 run tf2_ros tf2_echo base_link sonar_front`
+    # actually reported (0.070, 0, 0.233) - 3cm too far back and 15cm too
+    # high (the visible "rays are floating way above the robot" symptom).
+    # Worse, it put the FRONT sensor's own max-range return at only 0.1498m
+    # from base_link, permanently inside collision_monitor's 0.16m
+    # CollisionSlow ring - so the robot drove every goal in a constant 60%
+    # slowdown that toggled on and off with sensor noise (58 toggles in 60s,
+    # measured off /rosout).
+    #
+    # Values below are back-solved as (desired base_link pose - slot origin)
+    # to put all four at exactly 0.10m from centre, z=0.08 (mid-body, above
+    # the 0.066m wheel tops, below the 0.153m lidar deck). Verify any change
+    # with tf2_echo against base_link - never assume this frame is the robot's.
+    DistanceSensor {
+      translation 0.13 0 -0.073
+      rotation 0 0 1 0
+      name "sonar_front"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation 0.03 0.1 -0.073
+      rotation 0 0 1 1.5708
+      name "sonar_left"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation -0.07 0 -0.073
+      rotation 0 0 1 3.14159
+      name "sonar_back"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+    DistanceSensor {
+      translation 0.03 -0.1 -0.073
+      rotation 0 0 1 -1.5708
+      name "sonar_right"
+      type "sonar"
+      numberOfRays 9
+      aperture 0.5
+      lookupTable [ 0.01 0.01 0.001, 0.08 0.08 0.003 ]
+    }
+  ]
+}
+
+TurtleBot3Burger {
+  name "amr3"
+  translation 1.33 1.05 0
+  rotation 0 0 1 -1.5707963267948966
   controller "<extern>"
   controllerArgs [
     ""
