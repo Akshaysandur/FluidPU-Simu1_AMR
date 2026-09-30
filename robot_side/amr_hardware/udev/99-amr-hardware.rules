@@ -1,0 +1,4 @@
+# Copy to /etc/udev/rules.d/ on the Raspberry Pi, then: sudo udevadm control --reload && sudo udevadm trigger
+# Fixed device names regardless of USB enumeration order.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", SYMLINK+="dynamixel_u2d2"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar"

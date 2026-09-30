@@ -1,0 +1,43 @@
+# Real-robot parameters. Values marked TODO must be measured on the physical robot before first drive -
+# guessing them means the robot's real speed/turn rate won't match the /cmd_vel it's being sent.
+dynamixel_drive:
+  ros__parameters:
+    use_sim_time: false
+    device: /dev/dynamixel_u2d2        # udev symlink for the U2D2 (see udev/ in this package)
+    baudrate: 1000000
+    protocol_version: 2.0
+    left_id: 1                          # forward = CCW, as wired
+    right_id: 2                         # forward = CW: driver inverts this one
+    operating_mode: 1                   # Dynamixel "Velocity Control Mode"
+    # TODO measure on the real robot: wheel radius and the distance between the two wheel contact
+    # points. The Webots twin uses 0.033 m / 0.16 m (TurtleBot3 Burger) - almost certainly NOT this
+    # robot's real numbers, so /cmd_vel would be driven at the wrong real-world speed until these are
+    # measured and corrected here.
+    wheel_radius: 0.033                 # TODO: measure (metres)
+    wheel_separation: 0.16              # TODO: measure, wheel-centre to wheel-centre (metres)
+    max_wheel_rpm: 45.0                 # MX-106R no-load speed is ~45 rpm at 11.1 V; commands are clamped to this
+    cmd_vel_timeout: 0.5                # stop the wheels if no /cmd_vel arrives for this long (link/source dropout)
+    publish_odom: true                  # from encoder ticks, on /odom (not fed into Nav2 in mirror mode - informational)
+
+imu_node:
+  ros__parameters:
+    use_sim_time: false
+    i2c_bus: 1
+    i2c_address: 0x4A
+    frame_id: imu_link
+    rate_hz: 100.0
+
+ultrasonic_node:
+  ros__parameters:
+    use_sim_time: false
+    trigger_pin: 23                     # BCM numbering (physical pin 16)
+    echo_pin: 24                        # BCM numbering (physical pin 18, via the 1k/2k divider)
+    frame_id: ultrasonic_front_link
+    rate_hz: 15.0
+    safety_stop_dist: 0.15              # metres - matches the RPLidar's own 0.15 m dynamic safety zone
+    safety_topic: /hw_estop             # published true while an obstacle is inside safety_stop_dist
+
+# Network: the dev machine's final /cmd_vel (published by collision_monitor, the exact topic driving the
+# simulated wheels in Webots) must reach this Pi over the LAN. Point both machines at the same
+# CYCLONEDDS_URI peer-list config (tools/cyclone_lan.xml on the dev side) and the same ROS_DOMAIN_ID -
+# see robot_side/amr_hardware/README.md.

@@ -1,0 +1,15 @@
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <!-- The Pi's WiFi interface (`ip -4 addr` on the Pi to confirm the name). -->
+      <NetworkInterfaceAddress>wlan0</NetworkInterfaceAddress>
+      <AllowMulticast>true</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <!-- Set to the dev machine's actual IP - find it with `hostname -I` there. -->
+      <Peers><Peer address="DEV_MACHINE_IP_HERE"/></Peers>  <!-- replace with the dev machine's real IP -->
+    </Discovery>
+  </Domain>
+</CycloneDDS>

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>amr_hardware</name>
+  <version>0.1.0</version>
+  <description>
+    Runs ON the robot's Raspberry Pi 5 (ROS 2 Jazzy). Mirrors the Webots-simulated AMR: subscribes to the
+    same /cmd_vel the simulated robot's wheels are driven by (published over the network by the dev
+    machine's Nav2 stack) and drives the real Dynamixel MX-106R wheels to match. Also brings up the real
+    LiDAR, IMU and ultrasonic sensors and a hardware e-stop, independent of the mirroring.
+  </description>
+  <maintainer email="you@example.com">akshay</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sllidar_ros2</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
